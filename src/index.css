@@ -1,0 +1,73 @@
+@import url("https://fonts.googleapis.com/css2?family=Exo:ital,wght@0,100..900;1,100..900&family=Open+Sans:ital,wght@0,300..800;1,300..800&display=swap");
+@import "tailwindcss";
+
+@theme {
+  /* ── Breakpoints ── */
+  --breakpoint-xxs: 320px;
+  --breakpoint-xs:  480px;
+  --breakpoint-sm:  640px;
+  --breakpoint-md:  768px;
+  --breakpoint-lg:  1024px;
+  --breakpoint-xl:  1280px;
+  --breakpoint-2xl: 1536px;
+  --breakpoint-3xl: 1920px;
+  --breakpoint-4xl: 2560px;
+
+  /* ── Primary — Royal/Electric Blue (from "SAN" text & circuit board icon) ── */
+  --color-primary-50:  oklch(97%  0.012 256);   /* near-white blue tint           */
+  --color-primary-100: oklch(93%  0.030 256);   /* very light blue                */
+  --color-primary-200: oklch(85%  0.065 256);   /* light blue                     */
+  --color-primary-300: oklch(74%  0.115 256);   /* soft royal blue                */
+  --color-primary-400: oklch(62%  0.175 256);   /* medium royal blue              */
+  --color-primary-500: oklch(50%  0.220 256);   /* core royal blue (#1A2ECC ish)  */
+  --color-primary-600: oklch(42%  0.210 256);   /* deep royal blue                */
+  --color-primary-700: oklch(34%  0.185 256);   /* darker blue                    */
+  --color-primary-800: oklch(26%  0.150 256);   /* very dark blue                 */
+  --color-primary-900: oklch(18%  0.110 256);   /* near-black blue                */
+
+  /* ── Secondary — Medium Gray (from "TECH" text & tagline) ── */
+  --color-secondary-50:  oklch(97%  0.003 256);  /* off-white                      */
+  --color-secondary-100: oklch(92%  0.005 256);  /* lightest gray                  */
+  --color-secondary-200: oklch(84%  0.007 256);  /* light gray                     */
+  --color-secondary-300: oklch(74%  0.010 256);  /* soft gray                      */
+  --color-secondary-400: oklch(63%  0.012 256);  /* medium-light gray              */
+  --color-secondary-500: oklch(52%  0.014 256);  /* core medium gray (#9A9A9A ish) */
+  --color-secondary-600: oklch(42%  0.012 256);  /* dark gray                      */
+  --color-secondary-700: oklch(33%  0.010 256);  /* deeper gray                    */
+  --color-secondary-800: oklch(23%  0.007 256);  /* near-black gray                */
+  --color-secondary-900: oklch(14%  0.005 256);  /* almost black                   */
+
+  /* ── Error — Red scale ── */
+  --color-error-50:  oklch(97%  0.015  20);   /* blush                          */
+  --color-error-100: oklch(93%  0.040  22);
+  --color-error-200: oklch(86%  0.080  23);
+  --color-error-300: oklch(75%  0.140  24);
+  --color-error-400: oklch(63%  0.200  25);
+  --color-error-500: oklch(52%  0.240  26);   /* core red  (#D32F2F ish)         */
+  --color-error-600: oklch(44%  0.220  26);
+  --color-error-700: oklch(36%  0.190  26);
+  --color-error-800: oklch(28%  0.150  26);
+  --color-error-900: oklch(20%  0.100  26);
+
+  /* ── Success — Green scale ── */
+  --color-success-50:  oklch(97%  0.015 145);  /* mint                           */
+  --color-success-100: oklch(93%  0.040 145);
+  --color-success-200: oklch(87%  0.080 145);
+  --color-success-300: oklch(77%  0.130 145);
+  --color-success-400: oklch(65%  0.175 145);
+  --color-success-500: oklch(53%  0.200 145);  /* core green  (#2E7D32 ish)       */
+  --color-success-600: oklch(44%  0.185 145);
+  --color-success-700: oklch(36%  0.160 145);
+  --color-success-800: oklch(28%  0.125 145);
+  --color-success-900: oklch(20%  0.085 145);
+
+  /* ── Typography ── */
+  --font-sans: "Exo", "Open Sans", sans-serif;
+}
+
+/* ── Base styles ── */
+@layer base {
+  html {
+    font-family: "Exo", "Open Sans", sans-serif;
+  }
+}
