@@ -1,3 +1,5 @@
+import { Check, Info, TriangleAlert, X, XCircle } from "lucide-react";
+
 type AlertVariant = "info" | "success" | "error" | "warning";
 
 interface AlertProps {
@@ -35,11 +37,11 @@ const styles: Record<AlertVariant, { wrapper: string; icon: string; title: strin
   },
 };
 
-const icons: Record<AlertVariant, string> = {
-  info: "ℹ",
-  success: "✓",
-  error: "✕",
-  warning: "⚠",
+const icons: Record<AlertVariant, React.ReactNode> = {
+  info: <Info className="size-5" />,
+  success: <Check className="size-5" />,
+  error: <XCircle className="size-5" />,
+  warning: <TriangleAlert className="size-5" />,
 };
 
 export default function Alert({
@@ -62,7 +64,7 @@ export default function Alert({
         .filter(Boolean)
         .join(" ")}
     >
-      <span className={["text-lg leading-none mt-0.5", s.icon].join(" ")} aria-hidden>
+      <span className={["shrink-0 mt-0.5", s.icon].join(" ")} aria-hidden>
         {icons[variant]}
       </span>
       <div className="flex-1 min-w-0">
@@ -77,9 +79,9 @@ export default function Alert({
         <button
           onClick={onClose}
           aria-label="Dismiss alert"
-          className={["text-lg leading-none hover:opacity-70 transition-opacity", s.icon].join(" ")}
+          className={["shrink-0 hover:opacity-70 transition-opacity", s.icon].join(" ")}
         >
-          ✕
+          <X className="size-4" />
         </button>
       )}
     </div>

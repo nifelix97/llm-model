@@ -1,5 +1,16 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
+import {
+  BookOpen,
+  Brain,
+  Clock,
+  Database,
+  FileText,
+  FolderOpen,
+  MessageSquare,
+  Puzzle,
+  Search,
+} from "lucide-react";
 import Alert from "../components/Alert";
 import AppLayout from "../components/AppLayout";
 import Badge from "../components/Badge";
@@ -20,10 +31,10 @@ const PAGE_SIZE = 25;
 
 type Filter = "all" | "document" | "knowledge" | "qa";
 
-const TYPE_ICON: Record<string, string> = {
-  qa: "💬",
-  knowledge: "📚",
-  document: "📄",
+const TYPE_ICON: Record<string, ReactNode> = {
+  qa: <MessageSquare className="size-5" />,
+  knowledge: <BookOpen className="size-5" />,
+  document: <FileText className="size-5" />,
 };
 
 const TYPE_LABEL: Record<string, string> = {
@@ -61,7 +72,7 @@ function StatCard({
   value,
   accent,
 }: {
-  icon: string;
+  icon: ReactNode;
   label: string;
   value: number | string;
   accent?: boolean;
@@ -73,7 +84,7 @@ function StatCard({
         accent ? "border-primary-200 bg-primary-50/40" : "",
       ].join(" ")}
     >
-      <span className="shrink-0 size-10 rounded-xl bg-white border border-secondary-100 flex items-center justify-center text-xl shadow-sm">
+      <span className="shrink-0 size-10 rounded-xl bg-white border border-secondary-100 flex items-center justify-center text-primary-500 shadow-sm">
         {icon}
       </span>
       <div className="min-w-0">
@@ -134,8 +145,8 @@ function EntryRow({ entry }: { entry: DataEntry }) {
   return (
     <div className="rounded-xl border border-secondary-100 bg-white px-4 py-4 hover:shadow-sm transition-shadow">
       <div className="flex items-start gap-3">
-        <span className="shrink-0 size-10 rounded-xl bg-secondary-50 border border-secondary-100 flex items-center justify-center text-xl">
-          {TYPE_ICON[sourceType] ?? "🗂️"}
+        <span className="shrink-0 size-10 rounded-xl bg-secondary-50 border border-secondary-100 flex items-center justify-center text-secondary-400">
+          {TYPE_ICON[sourceType] ?? <FolderOpen className="size-5" />}
         </span>
         <div className="flex-1 min-w-0">
           <div className="flex flex-wrap items-center gap-2">
@@ -166,8 +177,14 @@ function EntryRow({ entry }: { entry: DataEntry }) {
           )}
 
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-xs text-secondary-400 font-sans">
-            <span>🧩 {entry.chunk_count} chunk{entry.chunk_count === 1 ? "" : "s"}</span>
-            <span>🕒 {formatDate(entry.created_at)}</span>
+            <span className="inline-flex items-center gap-1.5">
+              <Puzzle className="size-3.5" />
+              {entry.chunk_count} chunk{entry.chunk_count === 1 ? "" : "s"}
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <Clock className="size-3.5" />
+              {formatDate(entry.created_at)}
+            </span>
             {tags.length > 0 && (
               <span className="flex flex-wrap gap-1">
                 {tags.map((t) => (
@@ -259,7 +276,7 @@ export default function DataLakePage() {
           {/* Header */}
           <div className="mb-8">
             <div className="flex items-center gap-2 mb-2">
-              <span className="text-primary-500">🧠</span>
+              <span className="text-primary-500"><Brain className="size-4" /></span>
               <p className="text-xs font-semibold text-secondary-500 uppercase tracking-widest font-sans">
                 Data Lake
               </p>
@@ -300,11 +317,11 @@ export default function DataLakePage() {
           {/* Summary stats */}
           {summary && (
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-6">
-              <StatCard icon="🗃️" label="Total entries" value={summary.total_entries} />
-              <StatCard icon="🧩" label="Total chunks" value={summary.total_chunks} />
-              <StatCard icon="💬" label="Q&A pairs" value={summary.count_by_type["qa"] ?? 0} />
+              <StatCard icon={<Database className="size-5" />} label="Total entries" value={summary.total_entries} />
+              <StatCard icon={<Puzzle className="size-5" />} label="Total chunks" value={summary.total_chunks} />
+              <StatCard icon={<MessageSquare className="size-5" />} label="Q&A pairs" value={summary.count_by_type["qa"] ?? 0} />
               <StatCard
-                icon="📚"
+                icon={<BookOpen className="size-5" />}
                 label="Knowledge + documents"
                 value={(summary.count_by_type["knowledge"] ?? 0) + (summary.count_by_type["document"] ?? 0)}
               />
@@ -351,7 +368,9 @@ export default function DataLakePage() {
             </div>
           ) : entries.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 rounded-2xl border-2 border-dashed border-secondary-200 bg-secondary-50 text-center px-6">
-              <span className="text-4xl mb-3">{filter !== "all" || search ? "🔍" : "🗂️"}</span>
+              <span className="mb-3 text-secondary-300">
+                {filter !== "all" || search ? <Search className="size-9" /> : <FolderOpen className="size-9" />}
+              </span>
               <p className="text-sm font-semibold text-secondary-600 font-sans">
                 {filter !== "all" || search ? "No matching data" : "No data created yet"}
               </p>

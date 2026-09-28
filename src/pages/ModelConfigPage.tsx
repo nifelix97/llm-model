@@ -1,4 +1,17 @@
-import { useRef, useState, type ChangeEvent, type DragEvent } from "react";
+import { useRef, useState, type ChangeEvent, type DragEvent, type ReactNode } from "react";
+import {
+  BookOpen,
+  Brain,
+  Braces,
+  Check,
+  FileText,
+  Folder,
+  FolderOpen,
+  Globe,
+  MessageSquare,
+  Table,
+  Upload,
+} from "lucide-react";
 import Alert from "../components/Alert";
 import AppLayout from "../components/AppLayout";
 import Badge from "../components/Badge";
@@ -83,7 +96,7 @@ function TabButton({
 }: {
   active: boolean;
   onClick: () => void;
-  icon: string;
+  icon: ReactNode;
   label: string;
   count: number;
 }) {
@@ -129,10 +142,10 @@ function DeleteButton({ onClick }: { onClick: () => void }) {
   );
 }
 
-function EmptyState({ icon, title, subtitle }: { icon: string; title: string; subtitle: string }) {
+function EmptyState({ icon, title, subtitle }: { icon: ReactNode; title: string; subtitle: string }) {
   return (
     <div className="flex flex-col items-center justify-center py-12 rounded-2xl border-2 border-dashed border-secondary-200 bg-secondary-50 text-center">
-      <span className="text-3xl mb-3">{icon}</span>
+      <span className="mb-3 text-secondary-300">{icon}</span>
       <p className="text-sm font-semibold text-secondary-600 font-sans">{title}</p>
       <p className="text-xs text-secondary-400 font-sans mt-1">{subtitle}</p>
     </div>
@@ -206,7 +219,7 @@ function QATab({
 
       {/* List */}
       {entries.length === 0 ? (
-        <EmptyState icon="💬" title="No Q&A pairs yet" subtitle="Fill the form above and click Add pair" />
+        <EmptyState icon={<MessageSquare className="size-8" />} title="No Q&A pairs yet" subtitle="Fill the form above and click Add pair" />
       ) : (
         <div className="flex flex-col gap-3">
           {entries.map((e, i) => (
@@ -302,7 +315,7 @@ function KnowledgeTab({
       </Card>
 
       {entries.length === 0 ? (
-        <EmptyState icon="📚" title="No knowledge entries yet" subtitle="Fill the form above and click Add entry" />
+        <EmptyState icon={<BookOpen className="size-8" />} title="No knowledge entries yet" subtitle="Fill the form above and click Add entry" />
       ) : (
         <div className="flex flex-col gap-3">
           {entries.map((e) => {
@@ -364,13 +377,18 @@ function DocumentsTab({
     e.target.value = "";
   }
 
-  function fileIcon(name: string) {
+  function fileIcon(name: string): ReactNode {
     const ext = name.split(".").pop()?.toLowerCase();
-    const map: Record<string, string> = {
-      pdf: "📄", txt: "📝", md: "📝", csv: "📊",
-      docx: "📃", json: "🗂️", jsonl: "🗂️",
+    const map: Record<string, ReactNode> = {
+      pdf: <FileText className="size-5" />,
+      txt: <FileText className="size-5" />,
+      md: <FileText className="size-5" />,
+      csv: <Table className="size-5" />,
+      docx: <FileText className="size-5" />,
+      json: <Braces className="size-5" />,
+      jsonl: <Braces className="size-5" />,
     };
-    return map[ext ?? ""] ?? "📁";
+    return map[ext ?? ""] ?? <Folder className="size-5" />;
   }
 
   return (
@@ -392,7 +410,7 @@ function DocumentsTab({
             : "border-secondary-200 bg-white hover:border-primary-300 hover:bg-primary-50/40",
         ].join(" ")}
       >
-        <span className="text-4xl">{dragging ? "📂" : "⬆️"}</span>
+        <span className="text-primary-500">{dragging ? <FolderOpen className="size-9" /> : <Upload className="size-9" />}</span>
         <div className="text-center">
           <p className="text-sm font-semibold text-secondary-700 font-sans">
             {dragging ? "Drop files here" : "Drag & drop files, or click to browse"}
@@ -414,7 +432,7 @@ function DocumentsTab({
 
       {/* File list */}
       {entries.length === 0 ? (
-        <EmptyState icon="🗂️" title="No documents uploaded" subtitle="Upload files using the area above" />
+        <EmptyState icon={<FolderOpen className="size-8" />} title="No documents uploaded" subtitle="Upload files using the area above" />
       ) : (
         <div className="flex flex-col gap-2">
           {entries.map((e) => (
@@ -422,7 +440,7 @@ function DocumentsTab({
               key={e.id}
               className="flex items-center gap-3 rounded-xl border border-secondary-100 bg-white px-4 py-3 hover:shadow-sm transition-shadow"
             >
-              <span className="text-2xl shrink-0">{fileIcon(e.name)}</span>
+              <span className="shrink-0 text-secondary-400">{fileIcon(e.name)}</span>
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold text-secondary-900 font-sans truncate">{e.name}</p>
                 <p className="text-xs text-secondary-400 font-sans">{formatBytes(e.size)}</p>
@@ -538,7 +556,7 @@ function WebTab({
           {preview && (
             <div className="rounded-xl border border-secondary-100 bg-secondary-50 p-4 flex flex-col gap-3">
               <div className="flex items-start gap-2">
-                <span className="text-lg leading-none mt-0.5">🌐</span>
+                <span className="mt-0.5 shrink-0 text-primary-500"><Globe className="size-4" /></span>
                 <div className="flex-1 min-w-0">
                   <p className="text-xs font-semibold text-secondary-400 uppercase tracking-wider font-sans mb-1">
                     Previews <span className="normal-case">{preview.text_length.toLocaleString()} characters</span>
@@ -587,7 +605,7 @@ function WebTab({
 
       {entries.length === 0 ? (
         <EmptyState
-          icon="🌐"
+          icon={<Globe className="size-8" />}
           title="No web sources yet"
           subtitle="Enter a URL above, review the preview, then click Add page"
         />
@@ -598,7 +616,7 @@ function WebTab({
             return (
               <div key={e.id} className="rounded-xl border border-secondary-100 bg-white px-4 py-3 hover:shadow-sm transition-shadow">
                 <div className="flex items-start gap-3">
-                  <span className="text-2xl shrink-0 leading-none">🌐</span>
+                  <span className="shrink-0 text-secondary-400"><Globe className="size-5" /></span>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-bold text-secondary-900 font-sans">{e.title}</p>
                     <p className="text-xs text-secondary-400 font-sans mt-0.5 truncate">{e.url}</p>
@@ -728,7 +746,7 @@ export default function ModelConfigPage() {
           {/* Header */}
           <div className="mb-8">
             <div className="flex items-center gap-2 mb-2">
-              <span className="text-primary-500">🧠</span>
+              <span className="text-primary-500"><Brain className="size-4" /></span>
               <p className="text-xs font-semibold text-secondary-500 uppercase tracking-widest font-sans">
                 Model Training
               </p>
@@ -809,10 +827,10 @@ export default function ModelConfigPage() {
 
             {/* Tabs */}
             <div className="flex flex-wrap gap-2 p-1.5 bg-white rounded-2xl border border-secondary-100 shadow-sm">
-              <TabButton active={activeTab === "qa"} onClick={() => setActiveTab("qa")} icon="💬" label="Q&A Pairs" count={qaEntries.length} />
-              <TabButton active={activeTab === "knowledge"} onClick={() => setActiveTab("knowledge")} icon="📚" label="Knowledge" count={knowledgeEntries.length} />
-              <TabButton active={activeTab === "documents"} onClick={() => setActiveTab("documents")} icon="📁" label="Documents" count={docEntries.length} />
-              <TabButton active={activeTab === "web"} onClick={() => setActiveTab("web")} icon="🌐" label="Web" count={webEntries.length} />
+              <TabButton active={activeTab === "qa"} onClick={() => setActiveTab("qa")} icon={<MessageSquare className="size-4" />} label="Q&A Pairs" count={qaEntries.length} />
+              <TabButton active={activeTab === "knowledge"} onClick={() => setActiveTab("knowledge")} icon={<BookOpen className="size-4" />} label="Knowledge" count={knowledgeEntries.length} />
+              <TabButton active={activeTab === "documents"} onClick={() => setActiveTab("documents")} icon={<Folder className="size-4" />} label="Documents" count={docEntries.length} />
+              <TabButton active={activeTab === "web"} onClick={() => setActiveTab("web")} icon={<Globe className="size-4" />} label="Web" count={webEntries.length} />
             </div>
 
             {/* Tab content */}
@@ -855,23 +873,27 @@ export default function ModelConfigPage() {
                     </p>
                     <div className="flex flex-wrap items-center gap-3 mt-1.5">
                       {qaEntries.length > 0 && (
-                        <span className="text-xs text-secondary-400 font-sans">
-                          💬 {qaEntries.length} Q&A pair{qaEntries.length !== 1 ? "s" : ""}
+                        <span className="inline-flex items-center gap-1.5 text-xs text-secondary-400 font-sans">
+                          <MessageSquare className="size-3.5" />
+                          {qaEntries.length} Q&A pair{qaEntries.length !== 1 ? "s" : ""}
                         </span>
                       )}
                       {knowledgeEntries.length > 0 && (
-                        <span className="text-xs text-secondary-400 font-sans">
-                          📚 {knowledgeEntries.length} knowledge entr{knowledgeEntries.length !== 1 ? "ies" : "y"}
+                        <span className="inline-flex items-center gap-1.5 text-xs text-secondary-400 font-sans">
+                          <BookOpen className="size-3.5" />
+                          {knowledgeEntries.length} knowledge entr{knowledgeEntries.length !== 1 ? "ies" : "y"}
                         </span>
                       )}
                       {docEntries.length > 0 && (
-                        <span className="text-xs text-secondary-400 font-sans">
-                          📁 {docEntries.length} document{docEntries.length !== 1 ? "s" : ""}
+                        <span className="inline-flex items-center gap-1.5 text-xs text-secondary-400 font-sans">
+                          <Folder className="size-3.5" />
+                          {docEntries.length} document{docEntries.length !== 1 ? "s" : ""}
                         </span>
                       )}
                       {webEntries.length > 0 && (
-                        <span className="text-xs text-secondary-400 font-sans">
-                          🌐 {webEntries.length} page{webEntries.length !== 1 ? "s" : ""}
+                        <span className="inline-flex items-center gap-1.5 text-xs text-secondary-400 font-sans">
+                          <Globe className="size-3.5" />
+                          {webEntries.length} page{webEntries.length !== 1 ? "s" : ""}
                         </span>
                       )}
                       {totalItems === 0 && (
@@ -894,7 +916,10 @@ export default function ModelConfigPage() {
                         Submitting…
                       </>
                     ) : submitStatus === "success" ? (
-                      "✓ Submitted"
+                      <span className="inline-flex items-center gap-1.5">
+                        <Check className="size-4" />
+                        Submitted
+                      </span>
                     ) : (
                       "Submit to model"
                     )}

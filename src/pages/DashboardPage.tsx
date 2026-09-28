@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
+import { Check, Clock, FileText, History, Layers, LayoutGrid, Plus, Target, TrendingUp } from "lucide-react";
 import {
   Bar,
   BarChart,
@@ -216,11 +217,11 @@ function StatCard({ label, value, sub, icon }: {
   label: string;
   value: string | number;
   sub?: string;
-  icon: string;
+  icon: ReactNode;
 }) {
   return (
     <Card className="flex items-center gap-4">
-      <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-primary-50 text-xl">{icon}</div>
+      <div className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-primary-50 text-primary-500">{icon}</div>
       <div className="min-w-0">
         <p className="font-sans text-xs font-semibold uppercase tracking-wider text-secondary-500">{label}</p>
         <p className="font-sans text-2xl font-extrabold text-secondary-900">{value}</p>
@@ -496,10 +497,10 @@ function PolicyAnalysisView({
           {result.evidence_status === "insufficient" && <Alert variant="error" title="Evidence gap" className="mb-6">No relevant workspace evidence was retrieved. Numeric scores and projections are intentionally left unavailable.</Alert>}
 
           <div className="mb-8 grid grid-cols-2 gap-4 lg:grid-cols-4">
-            <StatCard icon="✓" label="Feasibility" value={formatPercent(result.feasibility.score)} sub={result.feasibility.score === null ? "Evidence gap" : "Implementation readiness"} />
-            <StatCard icon="↗" label="Outcome likelihood" value={formatPercent(result.likelihood.score)} sub={result.likelihood.score === null ? "Evidence gap" : "Policy success potential"} />
-            <StatCard icon="◈" label="Confidence" value={formatPercent(result.confidence)} sub={result.analysis_basis.replaceAll("_", " ")} />
-            <StatCard icon="◌" label="Evidence sources" value={result.citations.length} sub={result.evidence_status === "sufficient" ? "Broad coverage" : "Limited coverage"} />
+            <StatCard icon={<Check className="size-5" />} label="Feasibility" value={formatPercent(result.feasibility.score)} sub={result.feasibility.score === null ? "Evidence gap" : "Implementation readiness"} />
+            <StatCard icon={<TrendingUp className="size-5" />} label="Outcome likelihood" value={formatPercent(result.likelihood.score)} sub={result.likelihood.score === null ? "Evidence gap" : "Policy success potential"} />
+            <StatCard icon={<Target className="size-5" />} label="Confidence" value={formatPercent(result.confidence)} sub={result.analysis_basis.replaceAll("_", " ")} />
+            <StatCard icon={<Layers className="size-5" />} label="Evidence sources" value={result.citations.length} sub={result.evidence_status === "sufficient" ? "Broad coverage" : "Limited coverage"} />
           </div>
 
           <div className="grid gap-6 lg:grid-cols-2">
@@ -1007,7 +1008,7 @@ export default function DashboardPage() {
             <div className="flex flex-col items-center justify-center gap-3 py-24"><Spinner size="lg" label="Loading created policies" /><p className="font-sans text-sm text-secondary-500">Reading policy artifacts from the workspace…</p></div>
           ) : policies.length === 0 ? (
             <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-secondary-200 bg-secondary-50 px-6 py-16 text-center">
-              <div className="mb-3 flex size-14 items-center justify-center rounded-2xl bg-white text-2xl text-primary-500">＋</div>
+              <div className="mb-3 flex size-14 items-center justify-center rounded-2xl bg-white text-primary-500"><Plus className="size-7" /></div>
               <h2 className="font-sans text-base font-bold text-secondary-800">No created policies in this workspace yet</h2>
               <p className="mt-1 max-w-md font-sans text-sm text-secondary-500">Create a policy from the analysis workspace. Data-lake documents and datasets remain separate as supporting evidence.</p>
               <div className="mt-5 flex flex-wrap justify-center gap-3">{user?.permissions.includes("prompt:use") && <Link to="/prompt"><Button>Open policy analysis</Button></Link>}{canManageData && <Link to="/models/new"><Button variant="secondary">Add data</Button></Link>}</div>
@@ -1015,10 +1016,10 @@ export default function DashboardPage() {
           ) : (
             <>
               <div className="mb-8 grid grid-cols-2 gap-4 lg:grid-cols-4">
-                <StatCard icon="◈" label="Policies" value={policies.length} sub="created artifacts" />
-                <StatCard icon="▦" label="Categories" value={totalCategories} sub="policy areas" />
-                <StatCard icon="↗" label="Updates" value={totalUpdates} sub="saved revisions" />
-                <StatCard icon="◌" label="Latest update" value={latestUpdate ? formatDate(latestUpdate) : "None"} sub="workspace artifact" />
+                <StatCard icon={<FileText className="size-5" />} label="Policies" value={policies.length} sub="created artifacts" />
+                <StatCard icon={<LayoutGrid className="size-5" />} label="Categories" value={totalCategories} sub="policy areas" />
+                <StatCard icon={<History className="size-5" />} label="Updates" value={totalUpdates} sub="saved revisions" />
+                <StatCard icon={<Clock className="size-5" />} label="Latest update" value={latestUpdate ? formatDate(latestUpdate) : "None"} sub="workspace artifact" />
               </div>
               <PolicyOverviewCharts policies={policies} />
               <div className="mb-4 flex flex-wrap items-end justify-between gap-3">

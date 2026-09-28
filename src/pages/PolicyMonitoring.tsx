@@ -1,5 +1,14 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
+import {
+  ClipboardList,
+  Construction,
+  GraduationCap,
+  Hospital,
+  Leaf,
+  Scale,
+  TrendingUp,
+} from "lucide-react";
 import {
   Bar,
   BarChart,
@@ -44,15 +53,15 @@ function statusLabel(status: PolicyStatus): string {
   return STATUS_OPTIONS.find((option) => option.value === status)?.label ?? "Created";
 }
 
-function policyIcon(category: string): string {
+function policyIcon(category: string): ReactNode {
   const value = category.toLowerCase();
-  if (/educ|school|teacher/.test(value)) return "🎓";
-  if (/health|medical/.test(value)) return "🏥";
-  if (/econom|trade|growth/.test(value)) return "📈";
-  if (/infra|road|water|energy/.test(value)) return "🏗️";
-  if (/govern|law|corrupt/.test(value)) return "⚖️";
-  if (/environ|climate|forest/.test(value)) return "🌿";
-  return "📋";
+  if (/educ|school|teacher/.test(value)) return <GraduationCap className="size-5" />;
+  if (/health|medical/.test(value)) return <Hospital className="size-5" />;
+  if (/econom|trade|growth/.test(value)) return <TrendingUp className="size-5" />;
+  if (/infra|road|water|energy/.test(value)) return <Construction className="size-5" />;
+  if (/govern|law|corrupt/.test(value)) return <Scale className="size-5" />;
+  if (/environ|climate|forest/.test(value)) return <Leaf className="size-5" />;
+  return <ClipboardList className="size-5" />;
 }
 
 function errorMessage(error: unknown): string {
@@ -235,7 +244,7 @@ export default function PolicyMonitoring() {
             <div className="flex justify-center py-24"><Spinner size="lg" label="Loading policies…" /></div>
           ) : policies.length === 0 ? (
             <Card className="flex flex-col items-center py-16 text-center">
-              <span className="mb-3 text-4xl">📋</span>
+              <ClipboardList className="mb-3 size-9 text-secondary-300" />
               <h2 className="text-base font-bold text-secondary-800 font-sans">No saved policies yet</h2>
               <p className="mt-2 max-w-md text-sm text-secondary-500 font-sans">Create a policy from the Dashboard. It will appear here with the status Created. Documents and knowledge in the Data Lake are used as evidence for model analysis.</p>
               <Link to="/dashboard" className="mt-5"><Button variant="primary" size="sm">Go to Dashboard</Button></Link>
