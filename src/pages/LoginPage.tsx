@@ -5,6 +5,11 @@ import Button from "../components/Button";
 import Input from "../components/Input";
 import { useAuth } from "../context/AuthContext";
 
+const DEMO_USERS = [
+  { email: "admin@dc-tim.ai",   password: "admin123",   name: "Admin User",    role: "Admin"   },
+  { email: "analyst@dc-tim.ai", password: "analyst123", name: "Policy Analyst", role: "Analyst" },
+] as const;
+
 export default function LoginPage() {
   const { login } = useAuth();
   const navigate   = useNavigate();
@@ -20,6 +25,7 @@ export default function LoginPage() {
   const [showPw, setShowPw]     = useState(false);
 
   const [fieldErrors, setFieldErrors] = useState<{ email?: string; password?: string }>({});
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
 
   function validate() {
     const errs: typeof fieldErrors = {};
@@ -45,6 +51,21 @@ export default function LoginPage() {
       return;
     }
 
+    navigate(from, { replace: true });
+  }
+
+  // Temporary quick-switch: sign in as a user straight from the bottom-right menu
+  async function switchUser(cred: (typeof DEMO_USERS)[number]) {
+    setUserMenuOpen(false);
+    setError(null);
+    setFieldErrors({});
+    setLoading(true);
+    const result = await login(cred.email, cred.password);
+    setLoading(false);
+    if (!result.ok) {
+      setError(result.error ?? "Login failed.");
+      return;
+    }
     navigate(from, { replace: true });
   }
 
@@ -172,35 +193,6 @@ export default function LoginPage() {
               </Button>
             </form>
 
-            {/* Demo credentials hint */}
-            <div className="mt-6 pt-6 border-t border-secondary-700">
-              <p className="text-xs font-semibold text-secondary-600 uppercase tracking-wider font-sans mb-3">
-                Demo credentials
-              </p>
-              <div className="flex flex-col gap-2">
-                {[
-                  { email: "admin@dc-tim.ai",   password: "admin123",   role: "Admin"    },
-                  { email: "analyst@dc-tim.ai", password: "analyst123", role: "Analyst"  },
-                ].map((cred) => (
-                  <button
-                    key={cred.email}
-                    type="button"
-                    onClick={() => { setEmail(cred.email); setPassword(cred.password); setError(null); setFieldErrors({}); }}
-                    className="flex items-center justify-between px-3 py-2.5 rounded-xl bg-secondary-700/60 border border-secondary-600/60 hover:border-primary-500/40 hover:bg-secondary-700 transition-colors text-left group"
-                  >
-                    <div>
-                      <p className="text-xs font-semibold text-secondary-200 font-sans group-hover:text-white transition-colors">
-                        {cred.email}
-                      </p>
-                      <p className="text-xs text-secondary-500 font-sans">{cred.role}</p>
-                    </div>
-                    <span className="text-xs text-secondary-600 group-hover:text-primary-400 font-sans transition-colors">
-                      Use →
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </div>
           </div>
 
           <p className="text-center text-xs text-secondary-600 font-sans mt-6">
@@ -210,6 +202,55 @@ export default function LoginPage() {
             </Link>
           </p>
         </div>
+      </div>
+
+      {/* Quick user switcher (temporary) */}
+      {userMenuOpen && (
+        <button
+          type="button"
+          aria-label="Close user menu"
+          tabIndex={-1}
+          onClick={() => setUserMenuOpen(false)}
+          className="fixed inset-0 z-30 cursor-default"
+        />
+      )}
+      <div className="fixed bottom-5 right-5 z-40">
+        <button
+          type="button"
+          onClick={() => setUserMenuOpen((v) => !v)}
+          disabled={loading}
+          className="flex items-center gap-2 rounded-full bg-secondary-800/95 backdrop-blur border border-secondary-600 px-4 py-2.5 text-sm font-semibold text-secondary-200 hover:border-primary-500/50 hover:text-white transition-colors shadow-xl font-sans disabled:opacity-60"
+        >
+          👤 {loading ? "Signing in…" : userMenuOpen ? "Hide users" : "Switch user"}
+        </button>
+
+        {userMenuOpen && !loading && (
+          <div className="absolute bottom-full right-0 mb-3 w-72 rounded-2xl border border-secondary-600 bg-secondary-800/95 backdrop-blur p-2 shadow-2xl">
+            <p className="px-3 pt-2 pb-1 text-[11px] font-semibold uppercase tracking-wider text-secondary-500 font-sans">
+              Switch user
+            </p>
+            {DEMO_USERS.map((cred) => (
+              <button
+                key={cred.email}
+                type="button"
+                onClick={() => void switchUser(cred)}
+                className="w-full flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl hover:bg-secondary-700 transition-colors text-left group"
+              >
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold text-secondary-200 group-hover:text-white font-sans">
+                    {cred.name}
+                  </p>
+                  <p className="text-xs text-secondary-500 font-sans truncate">
+                    {cred.email} · {cred.role}
+                  </p>
+                </div>
+                <span className="text-xs text-secondary-600 group-hover:text-primary-400 font-sans transition-colors">
+                  →
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
