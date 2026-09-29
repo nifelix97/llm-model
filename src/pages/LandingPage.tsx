@@ -1,4 +1,16 @@
 import { Link } from "react-router-dom";
+import {
+  BarChart3,
+  Brain,
+  Construction,
+  FolderOpen,
+  GraduationCap,
+  Hospital,
+  Leaf,
+  Scale,
+  Settings,
+  TrendingUp,
+} from "lucide-react";
 import Badge from "../components/Badge";
 import Button from "../components/Button";
 import Card from "../components/Card";
@@ -15,7 +27,7 @@ const STATS = [
 
 const FEATURES = [
   {
-    icon: "📊",
+    icon: <BarChart3 className="size-6" />,
     title: "Model-Powered Dashboard",
     description:
       "Visualise development indicators across education, healthcare, economic, infrastructure, governance and environment — updated in real time by the model.",
@@ -24,7 +36,7 @@ const FEATURES = [
     badge: "Live",
   },
   {
-    icon: "⚙️",
+    icon: <Settings className="size-6" />,
     title: "Policy Optimization",
     description:
       "Adjust policy levers and let the model project optimised outcomes. Surface high-impact interventions with before/after comparisons across every indicator.",
@@ -33,7 +45,7 @@ const FEATURES = [
     badge: "Model",
   },
   {
-    icon: "🧠",
+    icon: <Brain className="size-6" />,
     title: "Model Prompt Interface",
     description:
       "Ask the model anything about national development policies. Get contextual, evidence-based answers drawn from your training data in real time.",
@@ -42,7 +54,7 @@ const FEATURES = [
     badge: null,
   },
   {
-    icon: "📂",
+    icon: <FolderOpen className="size-6" />,
     title: "Train the Model",
     description:
       "Feed the model your own data — Q&A pairs, knowledge entries, and documents — to build a specialised model tailored to your policy context.",
@@ -53,12 +65,12 @@ const FEATURES = [
 ];
 
 const POLICY_AREAS = [
-  { icon: "🎓", label: "Education",      color: "bg-primary-50   border-primary-100   text-primary-600"   },
-  { icon: "🏥", label: "Healthcare",     color: "bg-success-50   border-success-100   text-success-700"   },
-  { icon: "📈", label: "Economic",       color: "bg-amber-50     border-amber-100     text-amber-700",     },
-  { icon: "🏗️", label: "Infrastructure", color: "bg-violet-50    border-violet-100    text-violet-700"    },
-  { icon: "⚖️", label: "Governance",     color: "bg-teal-50      border-teal-100      text-teal-700"      },
-  { icon: "🌿", label: "Environment",    color: "bg-success-50   border-success-100   text-success-700"   },
+  { icon: <GraduationCap className="size-4" />, label: "Education",      color: "bg-primary-50   border-primary-100   text-primary-600"   },
+  { icon: <Hospital className="size-4" />,       label: "Healthcare",     color: "bg-success-50   border-success-100   text-success-700"   },
+  { icon: <TrendingUp className="size-4" />,     label: "Economic",       color: "bg-amber-50     border-amber-100     text-amber-700",     },
+  { icon: <Construction className="size-4" />,   label: "Infrastructure", color: "bg-violet-50    border-violet-100    text-violet-700"    },
+  { icon: <Scale className="size-4" />,          label: "Governance",     color: "bg-teal-50      border-teal-100      text-teal-700"      },
+  { icon: <Leaf className="size-4" />,           label: "Environment",    color: "bg-success-50   border-success-100   text-success-700"   },
 ];
 
 const HOW_IT_WORKS = [
@@ -169,7 +181,7 @@ export default function LandingPage() {
                   key={p.label}
                   className="inline-flex items-center gap-2 px-4 py-2 rounded-full border bg-secondary-900/60 border-secondary-700 text-secondary-300 text-sm font-semibold font-sans"
                 >
-                  <span>{p.icon}</span>
+                  <span className="text-secondary-400">{p.icon}</span>
                   {p.label}
                 </span>
               ))}

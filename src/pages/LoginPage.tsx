@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Brain, User } from "lucide-react";
 import Alert from "../components/Alert";
 import Button from "../components/Button";
 import Input from "../components/Input";
@@ -111,8 +112,8 @@ export default function LoginPage() {
 
           {/* Header */}
           <div className="text-center mb-8">
-            <div className="inline-flex size-16 items-center justify-center rounded-2xl bg-primary-500/10 border border-primary-500/20 text-3xl mb-4">
-              🧠
+            <div className="inline-flex size-16 items-center justify-center rounded-2xl bg-primary-500/10 border border-primary-500/20 mb-4">
+              <Brain className="size-8 text-primary-400" />
             </div>
             <h1 className="text-2xl font-extrabold text-white font-sans">
               Sign in to DC-TIM
@@ -221,7 +222,7 @@ export default function LoginPage() {
           disabled={loading}
           className="flex items-center gap-2 rounded-full bg-secondary-800/95 backdrop-blur border border-secondary-600 px-4 py-2.5 text-sm font-semibold text-secondary-200 hover:border-primary-500/50 hover:text-white transition-colors shadow-xl font-sans disabled:opacity-60"
         >
-          👤 {loading ? "Signing in…" : userMenuOpen ? "Hide users" : "Switch user"}
+          <User className="size-4" /> {loading ? "Signing in…" : userMenuOpen ? "Hide users" : "Switch user"}
         </button>
 
         {userMenuOpen && !loading && (

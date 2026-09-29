@@ -1,4 +1,16 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  Bot,
+  ClipboardList,
+  Construction,
+  GraduationCap,
+  Hospital,
+  Leaf,
+  Scale,
+  Settings,
+  TrendingUp,
+  TriangleAlert,
+} from "lucide-react";
 import {
   Bar,
   BarChart,
@@ -52,7 +64,7 @@ interface OptimizablePolicy {
   /** Normalised category key used to pick the lever template. */
   categoryKey: string;
   label: string;
-  icon: string;
+  icon: ReactNode;
   color: string;
   levers: Lever[];
   hasAnalysis: boolean;
@@ -104,7 +116,7 @@ interface OptimizationResult {
  */
 interface CategoryConfig {
   label: string;
-  icon: string;
+  icon: ReactNode;
   color: string;
   /** Levers offered for policies in this category. */
   levers: Lever[];
@@ -120,7 +132,7 @@ const GENERIC_LEVERS: Lever[] = [
 
 const CATEGORY_CONFIG: Record<string, CategoryConfig> = {
   education: {
-    label: "Education", icon: "🎓", color: "#3B5BF6",
+    label: "Education", icon: <GraduationCap className="size-4" />, color: "#3B5BF6",
     levers: [
       { key: "budget",       label: "Education Budget",         unit: "% of GDP", min: 1,   max: 10,  step: 0.1, description: "Total public spending on education as % of GDP." },
       { key: "teacherPay",   label: "Teacher Salary Index",     unit: "index",    min: 50,  max: 200, step: 5,   description: "Teacher salaries relative to national average wage." },
@@ -130,7 +142,7 @@ const CATEGORY_CONFIG: Record<string, CategoryConfig> = {
     ],
   },
   healthcare: {
-    label: "Healthcare", icon: "🏥", color: "#2E8B40",
+    label: "Healthcare", icon: <Hospital className="size-4" />, color: "#2E8B40",
     levers: [
       { key: "budget",       label: "Health Budget",            unit: "% of GDP", min: 1,   max: 15,  step: 0.5, description: "Public health expenditure as % of GDP." },
       { key: "beds",         label: "Hospital Beds",            unit: "per 1000", min: 0.5, max: 8,   step: 0.5, description: "Hospital beds per 1,000 population." },
@@ -140,7 +152,7 @@ const CATEGORY_CONFIG: Record<string, CategoryConfig> = {
     ],
   },
   economic: {
-    label: "Economic", icon: "📈", color: "#D97706",
+    label: "Economic", icon: <TrendingUp className="size-4" />, color: "#D97706",
     levers: [
       { key: "taxRate",      label: "Corporate Tax Rate",       unit: "%",        min: 5,   max: 50,  step: 1,   description: "Effective corporate income tax rate." },
       { key: "tradeOpen",    label: "Trade Openness",           unit: "index",    min: 10,  max: 100, step: 5,   description: "Exports + imports as % of GDP." },
@@ -150,7 +162,7 @@ const CATEGORY_CONFIG: Record<string, CategoryConfig> = {
     ],
   },
   infrastructure: {
-    label: "Infrastructure", icon: "🏗️", color: "#7C3AED",
+    label: "Infrastructure", icon: <Construction className="size-4" />, color: "#7C3AED",
     levers: [
       { key: "roadBudget",   label: "Roads & Transport Budget", unit: "% of GDP", min: 0.5, max: 8,   step: 0.5, description: "Annual spending on road and transport infrastructure." },
       { key: "energyMix",    label: "Renewable Energy Share",  unit: "%",        min: 0,   max: 100, step: 5,   description: "% of electricity from renewable sources." },
@@ -160,7 +172,7 @@ const CATEGORY_CONFIG: Record<string, CategoryConfig> = {
     ],
   },
   governance: {
-    label: "Governance", icon: "⚖️", color: "#0D9488",
+    label: "Governance", icon: <Scale className="size-4" />, color: "#0D9488",
     levers: [
       { key: "openData",     label: "Open Data Index",          unit: "index",    min: 0,   max: 100, step: 5,   description: "Government transparency and open data availability." },
       { key: "corruption",   label: "Anti-Corruption Budget",   unit: "% of GDP", min: 0,   max: 3,   step: 0.1, description: "Spending on anti-corruption agencies and programs." },
@@ -170,7 +182,7 @@ const CATEGORY_CONFIG: Record<string, CategoryConfig> = {
     ],
   },
   environment: {
-    label: "Environment", icon: "🌿", color: "#2E8B40",
+    label: "Environment", icon: <Leaf className="size-4" />, color: "#2E8B40",
     levers: [
       { key: "carbonTax",    label: "Carbon Tax Rate",          unit: "$/tCO₂",  min: 0,   max: 200, step: 5,   description: "Price on carbon emissions per tonne of CO₂." },
       { key: "renewable",    label: "Renewable Investment",     unit: "% of GDP", min: 0,   max: 5,   step: 0.1, description: "Public and private renewable energy investment." },
@@ -182,7 +194,7 @@ const CATEGORY_CONFIG: Record<string, CategoryConfig> = {
 };
 
 const DEFAULT_CATEGORY: CategoryConfig = {
-  label: "Policy", icon: "📋", color: "#64748B", levers: GENERIC_LEVERS,
+  label: "Policy", icon: <ClipboardList className="size-4" />, color: "#64748B", levers: GENERIC_LEVERS,
 };
 
 /** Match a stored category string ("Education", "education", "EDUCATION") to a key. */
@@ -677,7 +689,9 @@ export default function PolicyOptimizePage() {
               Dashboard and it will appear here.
             </Alert>
             <Card className="text-center py-14">
-              <p className="text-4xl mb-4">📋</p>
+              <div className="mb-4 flex justify-center">
+                <ClipboardList className="size-9 text-secondary-300" />
+              </div>
               <p className="text-base font-bold text-secondary-900 font-sans">
                 No policies found in this workspace
               </p>
@@ -700,7 +714,7 @@ export default function PolicyOptimizePage() {
           {/* Header */}
           <div className="mb-8">
             <div className="flex items-center gap-2 mb-2">
-              <span className="text-primary-500">⚙️</span>
+              <span className="text-primary-500"><Settings className="size-4" /></span>
               <p className="text-xs font-semibold text-secondary-500 uppercase tracking-widest font-sans">
                 Model Optimization
               </p>
@@ -775,7 +789,7 @@ export default function PolicyOptimizePage() {
                         : "text-secondary-600 hover:bg-secondary-100 hover:text-secondary-900",
                     ].join(" ")}
                   >
-                    <span>{p.icon}</span>
+                    <span className="text-secondary-500">{p.icon}</span>
                     <span className="max-w-[220px] truncate">{p.title}</span>
                     {p.hasAnalysis && (
                       <span
@@ -874,8 +888,8 @@ export default function PolicyOptimizePage() {
                   }
                 >
                   <div className="flex items-start gap-4">
-                    <div className="shrink-0 flex size-10 items-center justify-center rounded-xl bg-success-100 text-xl">
-                      {result.isDemo ? "⚠" : "🤖"}
+                    <div className="shrink-0 flex size-10 items-center justify-center rounded-xl bg-success-100">
+                      {result.isDemo ? <TriangleAlert className="size-5 text-warning-500" /> : <Bot className="size-5 text-success-500" />}
                     </div>
 
                       <div className="min-w-0">
