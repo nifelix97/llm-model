@@ -20,6 +20,7 @@ import Card from "../components/Card";
 import Input from "../components/Input";
 import Spinner from "../components/Spinner";
 import Textarea from "../components/Textarea";
+import WaterProgress, { type WaterProgressStatus } from "../components/WaterProgress";
 import { useAuth } from "../context/AuthContext";
 import {
   ingestBatch,
@@ -53,6 +54,8 @@ interface DocEntry {
   size: number;
   type: string;
   file: File;
+  uploadStatus: WaterProgressStatus;
+  uploadProgress: number;
 }
 
 interface WebEntry {
@@ -140,6 +143,13 @@ function DeleteButton({ onClick }: { onClick: () => void }) {
       </svg>
     </button>
   );
+}
+
+function docStatusLabel(status: WaterProgressStatus, progress: number): string {
+  if (status === "complete") return "Indexed";
+  if (status === "error") return "Failed";
+  if (status === "uploading") return `${progress}%`;
+  return "Ready";
 }
 
 function EmptyState({ icon, title, subtitle }: { icon: ReactNode; title: string; subtitle: string }) {
@@ -362,7 +372,15 @@ function DocumentsTab({
   function processFiles(files: FileList | null) {
     if (!files) return;
     Array.from(files).forEach((file) => {
-      onAdd({ id: uid(), name: file.name, size: file.size, type: file.type, file });
+      onAdd({
+        id: uid(),
+        name: file.name,
+        size: file.size,
+        type: file.type,
+        file,
+        uploadStatus: "queued",
+        uploadProgress: 0,
+      });
     });
   }
 
@@ -394,7 +412,7 @@ function DocumentsTab({
   return (
     <div className="flex flex-col gap-6">
       {/* Drop zone */}
-      <div
+              <div
         onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
         onDragLeave={() => setDragging(false)}
         onDrop={handleDrop}
@@ -444,6 +462,27 @@ function DocumentsTab({
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold text-secondary-900 font-sans truncate">{e.name}</p>
                 <p className="text-xs text-secondary-400 font-sans">{formatBytes(e.size)}</p>
+              </div>
+              <div className="hidden sm:flex items-center gap-2">
+                <WaterProgress
+                  progress={e.uploadProgress}
+                  status={e.uploadStatus}
+                  label={e.name}
+                />
+                <span
+                  className={[
+                    "w-14 text-right text-[11px] font-semibold font-sans",
+                    e.uploadStatus === "complete"
+                      ? "text-success-600"
+                      : e.uploadStatus === "error"
+                        ? "text-error-600"
+                        : e.uploadStatus === "uploading"
+                          ? "text-primary-600"
+                          : "text-secondary-400",
+                  ].join(" ")}
+                >
+                  {docStatusLabel(e.uploadStatus, e.uploadProgress)}
+                </span>
               </div>
               <Badge variant="secondary">{e.name.split(".").pop()?.toUpperCase()}</Badge>
               <DeleteButton onClick={() => onDelete(e.id)} />
@@ -656,7 +695,6 @@ export default function ModelConfigPage() {
   const [submitStatus, setSubmitStatus] = useState<SubmitStatus>("idle");
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitSummary, setSubmitSummary] = useState<SubmitSummary | null>(null);
-  const [modelName, setModelName] = useState("");
 
   const totalItems = qaEntries.length + knowledgeEntries.length + docEntries.length + webEntries.length;
 
@@ -672,8 +710,40 @@ export default function ModelConfigPage() {
       const uploadResults = await Promise.all(
         docEntries.map(async (doc) => {
           try {
-            return await uploadDocument(doc.file, doc.name);
+            setDocEntries((current) =>
+              current.map((entry) =>
+                entry.id === doc.id
+                  ? { ...entry, uploadStatus: "uploading", uploadProgress: 0 }
+                  : entry,
+              ),
+            );
+            const result = await uploadDocument(doc.file, doc.name, (progress) => {
+              // Transfer can finish before extraction/embedding. Leave a small
+              // visual runway until the server confirms the complete operation.
+              setDocEntries((current) =>
+                current.map((entry) =>
+                  entry.id === doc.id
+                    ? { ...entry, uploadStatus: "uploading", uploadProgress: Math.min(92, Math.round(progress * 0.92)) }
+                    : entry,
+                ),
+              );
+            });
+            setDocEntries((current) =>
+              current.map((entry) =>
+                entry.id === doc.id
+                  ? { ...entry, uploadStatus: "complete", uploadProgress: 100 }
+                  : entry,
+              ),
+            );
+            return result;
           } catch (err) {
+            setDocEntries((current) =>
+              current.map((entry) =>
+                entry.id === doc.id
+                  ? { ...entry, uploadStatus: "error" }
+                  : entry,
+              ),
+            );
             const detail = err instanceof RagApiError ? err.message : "upload failed";
             throw new Error(`File "${doc.name}": ${detail}`, { cause: err });
           }
@@ -683,7 +753,6 @@ export default function ModelConfigPage() {
       const batchResult =
         qaEntries.length > 0 || knowledgeEntries.length > 0 || webEntries.length > 0
           ? await ingestBatch({
-              model_name: modelName,
               qa: qaEntries.map((e) => ({
                 title: e.question.slice(0, 80) || "Q&A Entry",
                 question: e.question,
@@ -721,9 +790,7 @@ export default function ModelConfigPage() {
       setSubmitStatus("success");
       setQaEntries([]);
       setKnowledgeEntries([]);
-      setDocEntries([]);
       setWebEntries([]);
-      setModelName("");
     } catch (err) {
       setSubmitStatus("error");
       setSubmitError(
@@ -800,37 +867,21 @@ export default function ModelConfigPage() {
 
           <div className="flex flex-col gap-6">
 
-            {/* Model target */}
-            <Card>
-              <div className="flex flex-col sm:flex-row gap-4 items-end">
-                <Input
-                  label="Target model"
-                  placeholder="e.g. san-3-turbo, my-custom-model"
-                  value={modelName}
-                  onChange={(e) => setModelName(e.target.value)}
-                  hint="Which model should this data be applied to."
-                  className="flex-1"
-                />
-                <div className="flex items-center gap-3 shrink-0 pb-0.5">
-                  <div className={[
-                    "flex items-center gap-2 text-xs font-semibold font-sans px-3 py-2 rounded-lg border",
-                    totalItems > 0
-                      ? "bg-success-50 border-success-200 text-success-700"
-                      : "bg-secondary-100 border-secondary-200 text-secondary-500",
-                  ].join(" ")}>
-                    <span className={["size-2 rounded-full", totalItems > 0 ? "bg-success-500" : "bg-secondary-400"].join(" ")} />
-                    {totalItems > 0 ? `${totalItems} item${totalItems === 1 ? "" : "s"} ready` : "No data yet"}
-                  </div>
-                </div>
-              </div>
-            </Card>
-
             {/* Tabs */}
-            <div className="flex flex-wrap gap-2 p-1.5 bg-white rounded-2xl border border-secondary-100 shadow-sm">
+            <div className="flex flex-wrap items-center gap-2 p-1.5 bg-white rounded-2xl border border-secondary-100 shadow-sm">
               <TabButton active={activeTab === "qa"} onClick={() => setActiveTab("qa")} icon={<MessageSquare className="size-4" />} label="Q&A Pairs" count={qaEntries.length} />
               <TabButton active={activeTab === "knowledge"} onClick={() => setActiveTab("knowledge")} icon={<BookOpen className="size-4" />} label="Knowledge" count={knowledgeEntries.length} />
               <TabButton active={activeTab === "documents"} onClick={() => setActiveTab("documents")} icon={<Folder className="size-4" />} label="Documents" count={docEntries.length} />
               <TabButton active={activeTab === "web"} onClick={() => setActiveTab("web")} icon={<Globe className="size-4" />} label="Web" count={webEntries.length} />
+              <div className={[
+                "ml-auto mr-1 flex items-center gap-2 text-xs font-semibold font-sans px-3 py-2 rounded-lg border",
+                totalItems > 0
+                  ? "bg-success-50 border-success-200 text-success-700"
+                  : "bg-secondary-100 border-secondary-200 text-secondary-500",
+              ].join(" ")}>
+                <span className={["size-2 rounded-full", totalItems > 0 ? "bg-success-500" : "bg-secondary-400"].join(" ")} />
+                {totalItems > 0 ? `${totalItems} item${totalItems === 1 ? "" : "s"} ready` : "No data yet"}
+              </div>
             </div>
 
             {/* Tab content */}
