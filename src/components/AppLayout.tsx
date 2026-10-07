@@ -268,7 +268,7 @@ export default function AppLayout({ children, fullHeight = false }: AppLayoutPro
         </header>
 
         {/* Page content */}
-        <div className={["flex-1 overflow-y-auto", fullHeight ? "overflow-hidden flex flex-col" : ""].join(" ")}>
+        <div className={["flex-1 flex flex-col overflow-y-auto", fullHeight ? "overflow-hidden" : ""].join(" ")}>
           {children}
         </div>
       </div>

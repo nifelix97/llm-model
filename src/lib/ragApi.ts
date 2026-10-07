@@ -6,7 +6,7 @@
 const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
 
 /** Branded label shown in the UI instead of the underlying vendor/model id. */
-export const MODEL_DISPLAY_NAME = "DC-TIM 3 Pro";
+export const MODEL_DISPLAY_NAME = "DC-TIM";
 
 const TOKEN_KEY = "dc-tim-token";
 const USER_KEY = "dc-tim-user";
@@ -67,6 +67,7 @@ export interface QueryResult {
   answer: string;
   trace_id: string;
   citations: Citation[];
+  answer_mode?: "synthesized" | "evidence_only" | "insufficient";
   telemetry?: {
     embed_ms?: number;
     search_ms?: number;
@@ -78,6 +79,11 @@ export interface QueryResult {
     embedding_model?: string;
     answer_provider?: string;
     answer_model?: string;
+    intent?: string | null;
+    search_strategy?: string;
+    rerank_ms?: number;
+    estimated_prompt_tokens?: number;
+    estimated_completion_tokens?: number;
   } | null;
 }
 
@@ -235,6 +241,8 @@ export interface UploadResult extends IngestResult {
   file_url?: string | null;
 }
 
+export type UploadProgressHandler = (progress: number) => void;
+
 export interface BatchIngestResult {
   ingested: number;
   results: IngestResult[];
@@ -274,7 +282,6 @@ export interface DataListParams {
 }
 
 export interface BatchIngestPayload {
-  model_name?: string;
   qa: Array<{
     title: string;
     question: string;
@@ -434,12 +441,20 @@ export async function updateManagedUser(id: string, payload: {
   return parseJson<ManagedUser>(res);
 }
 
-export async function queryRag(query: string, topK = 5): Promise<QueryResult> {
-  const res = await apiFetch("/api/v1/rag/query", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ query, top_k: topK }),
-  });
+export async function queryRag(
+  query: string,
+  topK = 5,
+  options: ApiOptions = {},
+): Promise<QueryResult> {
+  const res = await apiFetch(
+    "/api/v1/rag/query",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query, top_k: topK }),
+    },
+    options,
+  );
   return parseJson<QueryResult>(res);
 }
 
@@ -462,15 +477,57 @@ export async function analyzePolicy(
 
 export async function uploadDocument(
   file: File,
-  filename = file.name
+  filename = file.name,
+  onProgress?: UploadProgressHandler,
 ): Promise<UploadResult> {
   const form = new FormData();
   form.append("file", file, filename);
-  const res = await apiFetch("/api/v1/rag/upload", {
-    method: "POST",
-    body: form,
+
+  // fetch() does not expose upload progress in browsers.  Keep this one
+  // endpoint on XHR so the document card can reflect bytes sent while the
+  // backend continues with extraction and embedding.
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", `${API_BASE}/api/v1/rag/upload`);
+    Object.entries(authHeaders()).forEach(([key, value]) => {
+      xhr.setRequestHeader(key, String(value));
+    });
+
+    xhr.upload.addEventListener("progress", (event) => {
+      if (event.lengthComputable) {
+        onProgress?.(Math.round((event.loaded / event.total) * 100));
+      }
+    });
+
+    xhr.addEventListener("load", () => {
+      let payload: unknown = null;
+      try {
+        payload = xhr.responseText ? JSON.parse(xhr.responseText) : null;
+      } catch {
+        // Keep the null fallback for a non-JSON error response.
+      }
+
+      if (xhr.status >= 200 && xhr.status < 300) {
+        onProgress?.(100);
+        resolve(payload as UploadResult);
+        return;
+      }
+
+      const detail =
+        typeof payload === "object" && payload && "detail" in payload
+          ? String((payload as { detail: unknown }).detail)
+          : xhr.statusText || `Request failed (${xhr.status})`;
+      reject(new RagApiError(detail, xhr.status));
+    });
+
+    xhr.addEventListener("error", () => {
+      reject(new RagApiError("Cannot reach the backend. Is it running at " + API_BASE + "?", 0));
+    });
+    xhr.addEventListener("abort", () => {
+      reject(new RagApiError("Upload was cancelled.", 0));
+    });
+    xhr.send(form);
   });
-  return parseJson<UploadResult>(res);
 }
 
 export async function ingestBatch(payload: BatchIngestPayload): Promise<BatchIngestResult> {
@@ -552,6 +609,25 @@ export async function optimizePromptRequest(prompt: string): Promise<PromptOptim
     body: JSON.stringify({ prompt }),
   });
   return parseJson<PromptOptimizeResult>(res);
+}
+
+export interface IntentResult {
+  intent: "conversational" | "factual_rag" | "policy_analysis" | "keyword_lookup" | string;
+  confidence: number;
+  category: string;
+  is_scenario: boolean;
+  search_terms: string[];
+  suggested_action: string;
+  expanded_query: string;
+}
+
+export async function detectQueryIntent(query: string): Promise<IntentResult> {
+  const res = await apiFetch("/api/v1/rag/intent", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ query }),
+  });
+  return parseJson<IntentResult>(res);
 }
 
 // ─── Chat history (per-user conversations) ────────────────────────────────────

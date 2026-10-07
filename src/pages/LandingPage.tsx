@@ -46,9 +46,9 @@ const FEATURES = [
   },
   {
     icon: <Brain className="size-6" />,
-    title: "Model Prompt Interface",
+    title: "Grounded Prompt Lab",
     description:
-      "Ask the model anything about national development policies. Get contextual, evidence-based answers drawn from your training data in real time.",
+      "Ask DC-TIM about national development policies and get contextual, evidence-based answers from your workspace sources.",
     to: "/prompt",
     cta: "Open Prompt",
     badge: null,
@@ -124,7 +124,7 @@ export default function LandingPage() {
 
               <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-primary-500/30 bg-primary-500/10 text-primary-300 text-xs font-semibold font-sans">
                 <span className="size-1.5 rounded-full bg-primary-400 animate-pulse" />
-                Powered by DC-TIM 3 Pro · Now in public beta
+                DC-TIM · Grounded workspace intelligence
               </div>
 
               <h1 className="text-4xl sm:text-5xl xl:text-6xl font-extrabold text-white font-sans leading-tight">
@@ -279,7 +279,7 @@ export default function LandingPage() {
           <div className="mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8">
             <div className="grid lg:grid-cols-2 gap-12 items-center">
               <div className="flex flex-col gap-6">
-                <Badge variant="primary">Model Prompt</Badge>
+                <Badge variant="primary">Prompt Lab</Badge>
                 <h2 className="text-3xl sm:text-4xl font-extrabold text-white font-sans leading-tight">
                   Ask complex policy questions,<br />get structured answers
                 </h2>
@@ -290,7 +290,7 @@ export default function LandingPage() {
                 </p>
                 <div className="flex flex-wrap gap-3">
                   <Link to="/prompt">
-                    <Button size="md">Open Model Prompt</Button>
+                    <Button size="md">Open Prompt Lab</Button>
                   </Link>
                   <Link to="/models/new">
                     <Button variant="ghost" size="md" className="border-secondary-600 text-secondary-300 hover:bg-secondary-800">
@@ -309,7 +309,7 @@ export default function LandingPage() {
                     <span className="size-2.5 rounded-full bg-secondary-600" />
                     <span className="size-2.5 rounded-full bg-success-500/70" />
                   </div>
-                  <span className="text-xs text-secondary-500 font-sans">DC-TIM 3 Pro — Model Prompt</span>
+                  <span className="text-xs text-secondary-500 font-sans">DC-TIM — Prompt Lab</span>
                   <div className="size-4" aria-hidden />
                 </div>
                 {/* Messages */}
