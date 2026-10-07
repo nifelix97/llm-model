@@ -14,7 +14,6 @@ import {
   LayoutGrid,
   Lightbulb,
   ListChecks,
-  Plus,
   RefreshCw,
   Shield,
   Sparkles,
