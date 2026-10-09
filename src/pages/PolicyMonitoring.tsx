@@ -256,7 +256,15 @@ function PolicyDetail({
       </Card>
 
       {/* ── Tabs ── */}
-      <div className="mb-4 flex items-center gap-1 rounded-xl border border-secondary-100 bg-secondary-50 p-1 w-fit">
+      <div className="mb-4 flex justify-end">
+        <Link
+          to={`/digital-twin?policy=${encodeURIComponent(current.id)}`}
+          state={{ policy: current, briefing: analysis }}
+          className="inline-flex items-center justify-center gap-2 rounded-lg bg-primary-500 px-4 py-2.5 font-sans text-sm font-semibold text-white shadow-sm transition-colors hover:bg-primary-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-400"
+        >
+          Open {current.title} in Digital Twin <span aria-hidden="true">→</span>
+        </Link>
+      </div>      <div className="mb-4 flex items-center gap-1 rounded-xl border border-secondary-100 bg-secondary-50 p-1 w-fit">
         <TabButton active={tab === "overview"} onClick={() => setTab("overview")}>Overview</TabButton>
         <TabButton active={tab === "charts"} onClick={() => setTab("charts")}>
           Charts {!hasCharts && <span className="ml-1 opacity-50">·</span>}

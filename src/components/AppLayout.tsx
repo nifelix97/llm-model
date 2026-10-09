@@ -132,11 +132,42 @@ const NAV = [
     ),
   },
   {
+    to: "/digital-twin",
+    label: "Digital Twin",
+    icon: (
+      <svg
+        className="size-5"
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+        strokeWidth={1.8}
+        aria-hidden
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          d="M12 3 3.75 7.5 12 12l8.25-4.5L12 3zm-8.25 9L12 16.5 20.25 12M3.75 16.5 12 21l8.25-4.5"
+        />
+      </svg>
+    ),
+  },
+  {
     to: "/users",
     label: "Users & permissions",
     icon: (
-      <svg className="size-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8} aria-hidden>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M16 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2m16 0v-2a4 4 0 00-3-3.87M14 3.13a4 4 0 010 7.75M14 7a4 4 0 11-8 0 4 4 0 018 0z" />
+      <svg
+        className="size-5"
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+        strokeWidth={1.8}
+        aria-hidden
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          d="M16 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2m16 0v-2a4 4 0 00-3-3.87M14 3.13a4 4 0 010 7.75M14 7a4 4 0 11-8 0 4 4 0 018 0z"
+        />
       </svg>
     ),
   },
@@ -148,6 +179,7 @@ const NAV_ACCESS: Record<string, PermissionKey> = {
   "/optimize": "optimize:run",
   "/datalake": "data:view",
   "/models/new": "data:manage",
+  "/digital-twin": "data:view",
   "/monitoring": "monitoring:view",
   "/users": "users:manage",
 };

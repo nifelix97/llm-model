@@ -5,6 +5,9 @@
 
 const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
 
+// Share identical concurrent RAG calls across React Strict Mode effect replays.
+const inFlightRagQueries = new Map<string, Promise<QueryResult>>();
+
 /** Branded label shown in the UI instead of the underlying vendor/model id. */
 export const MODEL_DISPLAY_NAME = "DC-TIM";
 
@@ -446,16 +449,33 @@ export async function queryRag(
   topK = 5,
   options: ApiOptions = {},
 ): Promise<QueryResult> {
-  const res = await apiFetch(
-    "/api/v1/rag/query",
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ query, top_k: topK }),
-    },
-    options,
-  );
-  return parseJson<QueryResult>(res);
+  const request = async () => {
+    const res = await apiFetch(
+      "/api/v1/rag/query",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query, top_k: topK }),
+      },
+      options,
+    );
+    return parseJson<QueryResult>(res);
+  };
+
+  // Keep caller-owned cancellation independent; coalesce unowned page requests.
+  if (options.signal) return request();
+
+  const key = `${topK}:${query.trim()}`;
+  const existing = inFlightRagQueries.get(key);
+  if (existing) return existing;
+
+  const pending = request();
+  inFlightRagQueries.set(key, pending);
+  try {
+    return await pending;
+  } finally {
+    if (inFlightRagQueries.get(key) === pending) inFlightRagQueries.delete(key);
+  }
 }
 
 export async function analyzePolicy(
