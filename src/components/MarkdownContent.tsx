@@ -8,6 +8,12 @@ interface MarkdownContentProps {
   isUser?: boolean;
 }
 
+function normalizeCitationMarkers(content: string): string {
+  // Convert external line-reference syntax such as 【1†L1-L4】 into the
+  // evidence index format used by the application: [1].
+  return content.replace(/【\s*(\d+)\s*†\s*L\d+(?:\s*-\s*L\d+)?\s*】/g, "[$1]");
+}
+
 function CodeBlock({
   inline,
   className,
@@ -92,6 +98,8 @@ export default function MarkdownContent({
   if (isUser) {
     return <span className={`whitespace-pre-wrap ${className}`}>{content}</span>;
   }
+
+  const normalizedContent = normalizeCitationMarkers(content);
 
   return (
     <div className={`prose-content text-sm leading-relaxed ${className}`}>
@@ -189,10 +197,12 @@ export default function MarkdownContent({
               </svg>
             </a>
           ),
-          hr: () => <hr className="my-3 border-secondary-200" />,
+          // Policy documents use headings and spacing for structure; a raw
+          // Markdown rule reads like an unexplained chart line in this view.
+          hr: () => null,
         }}
       >
-        {content}
+        {normalizedContent}
       </ReactMarkdown>
     </div>
   );

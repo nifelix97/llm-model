@@ -281,6 +281,317 @@ export interface DataListParams {
   offset?: number;
 }
 
+export type TransformationCaseStatus =
+  | "draft"
+  | "active"
+  | "monitoring"
+  | "completed"
+  | "archived";
+
+export interface TransformationCaseSource {
+  id: string;
+  case_id: string;
+  document_id: string;
+  source_role: string;
+  linked_at: string;
+}
+
+export interface TransformationCaseSummary {
+  id: string;
+  title: string;
+  territory: string | null;
+  status: TransformationCaseStatus;
+  revision: number;
+  source_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TransformationCase extends TransformationCaseSummary {
+  workspace_id: string;
+  problem_statement: string;
+  desired_outcome: string;
+  population: string | null;
+  time_horizon: string | null;
+  decision_authority: string | null;
+  success_criteria: string[];
+  indicators: Array<Record<string, unknown>>;
+  constraints: string[];
+  metadata: Record<string, unknown>;
+  review_date: string | null;
+  sources: TransformationCaseSource[];
+}
+
+export interface TransformationCaseListResult {
+  cases: TransformationCaseSummary[];
+  total: number;
+}
+
+export interface TransformationCaseCreatePayload {
+  title: string;
+  problem_statement: string;
+  desired_outcome: string;
+  territory?: string;
+  population?: string;
+  time_horizon?: string;
+  decision_authority?: string;
+  status?: TransformationCaseStatus;
+  success_criteria?: string[];
+  indicators?: Array<Record<string, unknown>>;
+  constraints?: string[];
+  metadata?: Record<string, unknown>;
+  review_date?: string | null;
+}
+
+export type TransformationCaseUpdatePayload = Partial<TransformationCaseCreatePayload>;
+
+export type IndicatorDirection = "increase" | "decrease" | "neutral";
+export type IndicatorQuality = "unassessed" | "partial" | "trusted" | "insufficient";
+
+export interface CaseIndicator {
+  id: string;
+  case_id: string;
+  workspace_id: string;
+  name: string;
+  definition: string;
+  unit: string;
+  direction: IndicatorDirection;
+  baseline_value: number | null;
+  target_value: number | null;
+  current_value: number | null;
+  uncertainty: number | null;
+  quality_status: IndicatorQuality;
+  source_refs: string[];
+  measurement_date: string | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CaseDiagnosis {
+  case_id: string;
+  generated_at: string;
+  evidence_status: "sufficient" | "partial" | "insufficient";
+  summary: string;
+  baseline_complete: boolean;
+  indicators: Array<Pick<CaseIndicator, "id" | "name" | "unit" | "direction" | "baseline_value" | "target_value" | "current_value" | "uncertainty" | "quality_status" | "source_refs">>;
+  evidence_source_ids: string[];
+  evidence_gaps: string[];
+  assumptions: string[];
+  next_steps: string[];
+}
+
+export interface IndicatorProposalItem {
+  name: string;
+  definition: string;
+  unit: string;
+  direction: IndicatorDirection;
+  baseline_value: number | null;
+  target_value: number | null;
+  source_refs: string[];
+  rationale: string;
+}
+
+export interface IndicatorProposal {
+  proposal_id: string;
+  case_id: string;
+  prompt: string;
+  generation_mode: "model_assisted" | "settlement_catalog_fallback";
+  summary: string;
+  indicators: IndicatorProposalItem[];
+  evidence_source_ids: string[];
+  warnings: string[];
+}
+
+export interface IndicatorProposalApprovalResult {
+  proposal_id: string;
+  created: CaseIndicator[];
+}
+
+export interface BaselineProposalItem {
+  indicator_id: string;
+  indicator_name: string;
+  baseline_value: number;
+  current_value: number | null;
+  uncertainty: number | null;
+  quality_status: "partial" | "trusted";
+  source_refs: string[];
+  rationale: string;
+}
+
+export interface BaselineProposal {
+  proposal_id: string;
+  case_id: string;
+  prompt: string;
+  generation_mode: "model_assisted" | "evidence_not_found";
+  summary: string;
+  updates: BaselineProposalItem[];
+  warnings: string[];
+}
+
+export interface BaselineProposalApprovalResult {
+  proposal_id: string;
+  updated: CaseIndicator[];
+}
+
+export interface ScenarioMetric {
+  indicator_id: string;
+  name: string;
+  unit: string;
+  direction: string;
+  baseline_value: number | null;
+  target_value: number | null;
+  current_value: number | null;
+  target_gap: number | null;
+  baseline_to_target_gap: number | null;
+  progress_percent: number | null;
+  equation: string;
+  status: string;
+  source_refs: string[];
+}
+
+export interface ScenarioOption {
+  key: string;
+  name: string;
+  service_access: string;
+  sprawl: string;
+  environmental_risk: string;
+  quantification_status: string;
+  rationale: string;
+}
+
+export interface ScenarioComparison {
+  case_id: string;
+  prompt: string;
+  generated_at: string;
+  evidence_status: "ready" | "partial" | "insufficient";
+  recommendation: string;
+  metrics: ScenarioMetric[];
+  options: ScenarioOption[];
+  equations: string[];
+  assumptions: string[];
+  evidence_gaps: string[];
+  approved_intervention_count: number;
+}
+
+export type InterventionPriority = "low" | "medium" | "high" | "critical";
+export type InterventionStatus = "proposed" | "approved" | "in_progress" | "completed" | "rejected";
+
+export interface CaseIntervention {
+  id: string;
+  case_id: string;
+  workspace_id: string;
+  name: string;
+  description: string;
+  intervention_type: string;
+  priority: InterventionPriority;
+  status: InterventionStatus;
+  rationale: string;
+  expected_impact: string;
+  timeframe: string;
+  evidence_refs: string[];
+  assumptions: string[];
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface InterventionProposalItem {
+  name: string;
+  description: string;
+  intervention_type: string;
+  priority: InterventionPriority;
+  rationale: string;
+  expected_impact: string;
+  timeframe: string;
+  evidence_refs: string[];
+  assumptions: string[];
+}
+
+export interface InterventionProposal {
+  proposal_id: string;
+  case_id: string;
+  prompt: string;
+  generation_mode: "model_assisted" | "settlement_catalog_fallback";
+  summary: string;
+  interventions: InterventionProposalItem[];
+  warnings: string[];
+}
+
+export interface InterventionProposalApprovalResult {
+  proposal_id: string;
+  created: CaseIntervention[];
+}
+
+export type PlanStatus = "draft" | "approved";
+
+export interface PlanAction {
+  title: string;
+  owner: string;
+  timeframe: string;
+  priority: InterventionPriority;
+  description: string;
+  source_intervention_id: string | null;
+}
+
+export interface PlanIndicator {
+  indicator_id: string;
+  name: string;
+  unit: string;
+  baseline_value: number | null;
+  target_value: number | null;
+  current_value: number | null;
+  direction: string;
+}
+
+export interface ImplementationPlan {
+  case_id: string;
+  status: PlanStatus;
+  version: number;
+  title: string;
+  objective: string;
+  decision: string;
+  actions: PlanAction[];
+  indicators: PlanIndicator[];
+  timeline: string;
+  notes: string;
+  created_at: string;
+  updated_at: string;
+  approved_at: string | null;
+  approved_by: string | null;
+}
+
+export interface MonitoringIndicator {
+  indicator_id: string;
+  name: string;
+  unit: string;
+  direction: string;
+  baseline_value: number | null;
+  target_value: number | null;
+  current_value: number | null;
+  progress_percent: number | null;
+  status: "not_started" | "in_progress" | "on_target" | "off_track" | "no_target";
+  measurement_date: string | null;
+  source_refs: string[];
+}
+
+export interface CaseMonitoring {
+  case_id: string;
+  generated_at: string;
+  overall_status: "not_started" | "in_progress" | "on_track" | "off_track" | "no_indicators";
+  indicators: MonitoringIndicator[];
+}
+
+export interface ImplementationPlanInput {
+  title: string;
+  objective: string;
+  decision: string;
+  actions: PlanAction[];
+  indicators: PlanIndicator[];
+  timeline: string;
+  notes: string;
+}
+
 export interface BatchIngestPayload {
   qa: Array<{
     title: string;
@@ -578,6 +889,18 @@ export async function updatePolicyArtifact(
   return parseJson<PolicyArtifact>(res);
 }
 
+export async function downloadPolicyArtifact(
+  id: string,
+  format: "pdf" | "docx" | "markdown" | "json",
+): Promise<{ blob: Blob; filename: string }> {
+  const res = await apiFetch(`/api/v1/policies/${encodeURIComponent(id)}/export?format=${format}`);
+  const blob = await res.blob();
+  const disposition = res.headers.get("content-disposition") ?? "";
+  const match = disposition.match(/filename="?([^";]+)"?/i);
+  const extension = format === "docx" ? "docx" : format === "markdown" ? "md" : format;
+  return { blob, filename: match?.[1] ?? `policy-implementation-brief.${extension}` };
+}
+
 export async function listDataEntries(params: DataListParams = {}): Promise<DataListResult> {
   const qs = new URLSearchParams();
   if (params.source_type) qs.set("source_type", params.source_type);
@@ -587,6 +910,261 @@ export async function listDataEntries(params: DataListParams = {}): Promise<Data
   const suffix = qs.toString() ? `?${qs.toString()}` : "";
   const res = await apiFetch(`/api/v1/rag/entries${suffix}`);
   return parseJson<DataListResult>(res);
+}
+
+export async function listTransformationCases(
+  limit = 50,
+  offset = 0,
+): Promise<TransformationCaseListResult> {
+  const qs = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+  const res = await apiFetch(`/api/v1/cases?${qs.toString()}`);
+  return parseJson<TransformationCaseListResult>(res);
+}
+
+export async function createTransformationCase(
+  payload: TransformationCaseCreatePayload,
+): Promise<TransformationCase> {
+  const res = await apiFetch("/api/v1/cases", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  return parseJson<TransformationCase>(res);
+}
+
+export async function getTransformationCase(id: string): Promise<TransformationCase> {
+  const res = await apiFetch(`/api/v1/cases/${encodeURIComponent(id)}`);
+  return parseJson<TransformationCase>(res);
+}
+
+export async function updateTransformationCase(
+  id: string,
+  payload: TransformationCaseUpdatePayload,
+): Promise<TransformationCase> {
+  const res = await apiFetch(`/api/v1/cases/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  return parseJson<TransformationCase>(res);
+}
+
+export async function linkCaseSource(
+  caseId: string,
+  documentId: string,
+  sourceRole = "evidence",
+): Promise<TransformationCaseSource> {
+  const res = await apiFetch(`/api/v1/cases/${encodeURIComponent(caseId)}/sources`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ document_id: documentId, source_role: sourceRole }),
+  });
+  return parseJson<TransformationCaseSource>(res);
+}
+
+export async function listCaseIndicators(caseId: string): Promise<CaseIndicator[]> {
+  const res = await apiFetch(`/api/v1/cases/${encodeURIComponent(caseId)}/indicators`);
+  const body = await parseJson<{ indicators: CaseIndicator[] }>(res);
+  return body.indicators;
+}
+
+export async function createCaseIndicator(
+  caseId: string,
+  payload: {
+    name: string;
+    definition: string;
+    unit: string;
+    direction?: IndicatorDirection;
+    baseline_value?: number | null;
+    target_value?: number | null;
+    current_value?: number | null;
+    uncertainty?: number | null;
+    quality_status?: IndicatorQuality;
+    source_refs?: string[];
+  },
+): Promise<CaseIndicator> {
+  const res = await apiFetch(`/api/v1/cases/${encodeURIComponent(caseId)}/indicators`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  return parseJson<CaseIndicator>(res);
+}
+
+export async function getCaseDiagnosis(caseId: string): Promise<CaseDiagnosis> {
+  const res = await apiFetch(`/api/v1/cases/${encodeURIComponent(caseId)}/diagnosis`);
+  return parseJson<CaseDiagnosis>(res);
+}
+
+export async function proposeCaseIndicators(
+  caseId: string,
+  prompt: string,
+): Promise<IndicatorProposal> {
+  const res = await apiFetch(`/api/v1/cases/${encodeURIComponent(caseId)}/indicator-proposals`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ prompt }),
+  });
+  return parseJson<IndicatorProposal>(res);
+}
+
+export async function approveCaseIndicators(
+  caseId: string,
+  proposal: IndicatorProposal,
+): Promise<IndicatorProposalApprovalResult> {
+  const res = await apiFetch(`/api/v1/cases/${encodeURIComponent(caseId)}/indicator-proposals/approve`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      proposal_id: proposal.proposal_id,
+      prompt: proposal.prompt,
+      generation_mode: proposal.generation_mode,
+      indicators: proposal.indicators,
+    }),
+  });
+  return parseJson<IndicatorProposalApprovalResult>(res);
+}
+
+export async function proposeCaseBaselines(
+  caseId: string,
+  prompt: string,
+): Promise<BaselineProposal> {
+  const res = await apiFetch(`/api/v1/cases/${encodeURIComponent(caseId)}/baseline-proposals`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ prompt }),
+  });
+  return parseJson<BaselineProposal>(res);
+}
+
+export async function approveCaseBaselines(
+  caseId: string,
+  proposal: BaselineProposal,
+): Promise<BaselineProposalApprovalResult> {
+  const res = await apiFetch(`/api/v1/cases/${encodeURIComponent(caseId)}/baseline-proposals/approve`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      proposal_id: proposal.proposal_id,
+      prompt: proposal.prompt,
+      generation_mode: proposal.generation_mode,
+      updates: proposal.updates,
+    }),
+  });
+  return parseJson<BaselineProposalApprovalResult>(res);
+}
+
+export async function compareCaseScenarios(
+  caseId: string,
+  prompt: string,
+): Promise<ScenarioComparison> {
+  const res = await apiFetch(`/api/v1/cases/${encodeURIComponent(caseId)}/scenarios/compare`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ prompt }),
+  });
+  return parseJson<ScenarioComparison>(res);
+}
+
+export async function listCaseInterventions(caseId: string): Promise<CaseIntervention[]> {
+  const res = await apiFetch(`/api/v1/cases/${encodeURIComponent(caseId)}/interventions`);
+  const body = await parseJson<{ interventions: CaseIntervention[] }>(res);
+  return body.interventions;
+}
+
+export async function proposeCaseInterventions(
+  caseId: string,
+  prompt: string,
+): Promise<InterventionProposal> {
+  const res = await apiFetch(`/api/v1/cases/${encodeURIComponent(caseId)}/interventions/proposals`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ prompt }),
+  });
+  return parseJson<InterventionProposal>(res);
+}
+
+export async function approveCaseInterventions(
+  caseId: string,
+  proposal: InterventionProposal,
+): Promise<InterventionProposalApprovalResult> {
+  const res = await apiFetch(`/api/v1/cases/${encodeURIComponent(caseId)}/interventions/proposals/approve`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      proposal_id: proposal.proposal_id,
+      prompt: proposal.prompt,
+      generation_mode: proposal.generation_mode,
+      interventions: proposal.interventions,
+    }),
+  });
+  return parseJson<InterventionProposalApprovalResult>(res);
+}
+
+export async function getCasePlan(caseId: string): Promise<ImplementationPlan | null> {
+  const res = await apiFetch(`/api/v1/cases/${encodeURIComponent(caseId)}/plan`);
+  if (res.status === 404) return null;
+  return parseJson<ImplementationPlan>(res);
+}
+
+export async function generateCasePlan(
+  caseId: string,
+  payload: { decision?: string; timeline?: string; notes?: string } = {},
+): Promise<ImplementationPlan> {
+  const res = await apiFetch(`/api/v1/cases/${encodeURIComponent(caseId)}/plan/generate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  return parseJson<ImplementationPlan>(res);
+}
+
+export async function updateCasePlan(
+  caseId: string,
+  payload: ImplementationPlanInput,
+): Promise<ImplementationPlan> {
+  const res = await apiFetch(`/api/v1/cases/${encodeURIComponent(caseId)}/plan`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  return parseJson<ImplementationPlan>(res);
+}
+
+export async function approveCasePlan(caseId: string): Promise<ImplementationPlan> {
+  const res = await apiFetch(`/api/v1/cases/${encodeURIComponent(caseId)}/plan/approve`, {
+    method: "POST",
+  });
+  return parseJson<ImplementationPlan>(res);
+}
+
+export async function getCaseMonitoring(caseId: string): Promise<CaseMonitoring> {
+  const res = await apiFetch(`/api/v1/cases/${encodeURIComponent(caseId)}/monitoring`);
+  return parseJson<CaseMonitoring>(res);
+}
+
+export async function updateCaseIndicator(
+  caseId: string,
+  indicatorId: string,
+  payload: Partial<Pick<CaseIndicator, "current_value" | "measurement_date" | "quality_status">>,
+): Promise<CaseIndicator> {
+  const res = await apiFetch(`/api/v1/cases/${encodeURIComponent(caseId)}/indicators/${encodeURIComponent(indicatorId)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  return parseJson<CaseIndicator>(res);
+}
+
+export async function downloadCasePlan(
+  caseId: string,
+  format: "pdf" | "docx" | "markdown" | "json",
+): Promise<{ blob: Blob; filename: string }> {
+  const res = await apiFetch(`/api/v1/cases/${encodeURIComponent(caseId)}/plan/export?format=${format}`);
+  if (!res.ok) throw new RagApiError(await readErrorDetail(res), res.status);
+  const disposition = res.headers.get("Content-Disposition") ?? "";
+  const match = /filename="?([^";]+)"?/i.exec(disposition);
+  return { blob: await res.blob(), filename: match?.[1] ?? `settlement-plan.${format === "markdown" ? "md" : format}` };
 }
 
 export async function scrapePreview(url: string): Promise<ScrapePreviewResult> {

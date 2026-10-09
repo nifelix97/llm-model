@@ -71,3 +71,84 @@
     font-family: "Exo", "Open Sans", sans-serif;
   }
 }
+
+/* Purposeful upload motion: the water level is a transform so it stays cheap
+   to animate, while the wave is disabled for reduced-motion users. */
+.water-progress {
+  position: relative;
+  width: 34px;
+  height: 34px;
+  overflow: hidden;
+  border: 1px solid color-mix(in oklab, var(--color-secondary-200) 78%, white);
+  border-radius: 10px;
+  background: color-mix(in oklab, var(--color-secondary-50) 86%, white);
+  color: var(--color-secondary-400);
+}
+
+.water-progress__fill {
+  position: absolute;
+  inset: 0;
+  transform-origin: bottom;
+  background: linear-gradient(180deg, var(--color-primary-300), var(--color-primary-500));
+  transition: transform 420ms cubic-bezier(0.16, 1, 0.3, 1), background 260ms ease;
+}
+
+.water-progress__surface {
+  position: absolute;
+  top: -3px;
+  left: -18%;
+  width: 136%;
+  height: 8px;
+  border-radius: 50%;
+  background: color-mix(in oklab, white 62%, var(--color-primary-400));
+  animation: water-progress-wave 1.35s ease-in-out infinite;
+}
+
+.water-progress__icon {
+  position: absolute;
+  inset: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  filter: drop-shadow(0 1px 1px rgb(15 23 42 / 0.2));
+}
+
+.water-progress--queued .water-progress__icon {
+  color: var(--color-secondary-400);
+}
+
+.water-progress--complete .water-progress__fill {
+  background: linear-gradient(180deg, var(--color-success-400), var(--color-success-600));
+}
+
+.water-progress--complete .water-progress__surface {
+  background: color-mix(in oklab, white 64%, var(--color-success-400));
+  animation: none;
+}
+
+.water-progress--error {
+  border-color: var(--color-error-200);
+  color: var(--color-error-600);
+}
+
+.water-progress--error .water-progress__fill {
+  background: var(--color-error-400);
+}
+
+.water-progress--error .water-progress__surface {
+  animation: none;
+}
+
+@keyframes water-progress-wave {
+  0%, 100% { transform: translateX(-3%) scaleX(0.98); }
+  50% { transform: translateX(3%) scaleX(1.02); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .water-progress__fill,
+  .water-progress__surface {
+    transition: none;
+    animation: none;
+  }
+}

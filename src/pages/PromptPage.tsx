@@ -7,7 +7,8 @@ import {
   type KeyboardEvent,
   type ReactNode,
 } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { ArrowRight, CheckCircle2, Target } from "lucide-react";
 import {
   AssistantRuntimeProvider,
   ActionBarPrimitive,
@@ -20,17 +21,25 @@ import {
   type MessageState,
   type ThreadMessageLike,
 } from "@assistant-ui/react";
-import { MarkdownTextPrimitive } from "@assistant-ui/react-markdown";
 import AppLayout from "../components/AppLayout";
+import MarkdownContent from "../components/MarkdownContent";
 import { detectCategory, saveAnalysis } from "../context/AnalysisContext";
 import { useAuth } from "../context/AuthContext";
 import {
   appendConversationMessages,
+  approveCaseBaselines,
+  approveCaseIndicators,
+  approveCaseInterventions,
+  compareCaseScenarios,
   createConversation,
   deleteConversation,
   getConversation,
+  getTransformationCase,
   listConversations,
   optimizePromptRequest,
+  proposeCaseBaselines,
+  proposeCaseIndicators,
+  proposeCaseInterventions,
   queryRag,
   RagApiError,
   scorePercent,
@@ -38,8 +47,13 @@ import {
   type ChatMessageInput,
   type Citation,
   type ConversationSummary,
+  type BaselineProposal,
+  type IndicatorProposal,
+  type InterventionProposal,
   type IntentResult,
   type QueryResult,
+  type ScenarioComparison,
+  type TransformationCase,
 } from "../lib/ragApi";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -60,7 +74,15 @@ interface Message {
   intent?: IntentResult;
   telemetry?: QueryResult["telemetry"];
   answerMode?: QueryResult["answer_mode"];
+  action?: CaseAction;
+  scenario?: ScenarioComparison;
 }
+
+type CaseActionKind = "indicators" | "baselines" | "interventions";
+type CaseAction =
+  | { kind: "indicators"; status: "pending" | "approved"; proposal: IndicatorProposal }
+  | { kind: "baselines"; status: "pending" | "approved"; proposal: BaselineProposal }
+  | { kind: "interventions"; status: "pending" | "approved"; proposal: InterventionProposal };
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -70,6 +92,39 @@ const SUGGESTIONS = [
   "Compare healthcare infrastructure in low vs high-income countries.",
   "What are the best practices for renewable energy adoption?",
 ];
+
+const SETTLEMENT_SUGGESTIONS = [
+  "Set up the settlement indicators for this case using the linked evidence.",
+  "Extract explicit baseline values and exact source references for the approved indicators.",
+  "Propose interventions that improve service access while controlling sprawl and environmental risk.",
+  "Compare the available settlement actions and explain the main trade-offs.",
+];
+
+function detectCaseAction(prompt: string): CaseActionKind | null {
+  const normalized = prompt.toLowerCase();
+  if (normalized.includes("baseline") || normalized.includes("extract values") || normalized.includes("current values")) return "baselines";
+  if (normalized.includes("intervention") || normalized.includes("action option") || normalized.includes("settlement actions")) return "interventions";
+  if (normalized.includes("indicator") || normalized.includes("measure progress") || normalized.includes("success measure")) return "indicators";
+  return null;
+}
+
+function detectsScenarioPrompt(prompt: string): boolean {
+  const normalized = prompt.toLowerCase();
+  return (normalized.includes("compare") || normalized.includes("scenario") || normalized.includes("what-if") || normalized.includes("what if"))
+    && (normalized.includes("rurban") || normalized.includes("consolidat") || normalized.includes("settlement") || normalized.includes("option"));
+}
+
+function actionLabel(kind: CaseActionKind): string {
+  if (kind === "indicators") return "Indicators";
+  if (kind === "baselines") return "Baseline evidence";
+  return "Interventions";
+}
+
+async function buildCaseAction(caseId: string, kind: CaseActionKind, prompt: string): Promise<CaseAction> {
+  if (kind === "indicators") return { kind, status: "pending", proposal: await proposeCaseIndicators(caseId, prompt) };
+  if (kind === "baselines") return { kind, status: "pending", proposal: await proposeCaseBaselines(caseId, prompt) };
+  return { kind, status: "pending", proposal: await proposeCaseInterventions(caseId, prompt) };
+}
 
 function uid() {
   return Math.random().toString(36).slice(2, 10);
@@ -100,6 +155,8 @@ function messageFromServer(m: ChatMessage): Message {
     intent: (meta.intent as IntentResult) ?? undefined,
     telemetry: (meta.telemetry as QueryResult["telemetry"]) ?? undefined,
     answerMode,
+    action: meta.action as CaseAction | undefined,
+    scenario: meta.scenario as ScenarioComparison | undefined,
   };
 }
 
@@ -116,6 +173,8 @@ function toServerMessage(m: Message): ChatMessageInput {
       intent: m.intent ?? null,
       telemetry: m.telemetry ?? null,
       answer_mode: m.answerMode ?? null,
+      action: m.action ?? null,
+      scenario: m.scenario ?? null,
     },
   };
 }
@@ -530,16 +589,123 @@ function OptimizePreview({
 
 // ─── Message bubble ───────────────────────────────────────────────────────────
 
-function AssistantMarkdownText() {
-  return <MarkdownTextPrimitive />;
+type BriefSignal = {
+  value: string;
+  label: string;
+};
+
+function settlementSignals(content: string): BriefSignal[] {
+  const signals: BriefSignal[] = [];
+  const add = (value: string, label: string) => signals.push({ value, label });
+  if (/182[\s,]*120\s*(?:to|→|->)\s*303[\s,]*120/i.test(content)) add("182,120 → 303,120", "water capacity · m³/day");
+  if (/1[\s,]*500\s*MW/i.test(content)) add("1,500 MW", "power supply target");
+  if (/3[\s,]*000\s+health posts/i.test(content)) add("3,000", "health posts by 2050");
+  if (/3[\s,]*980\s*km²/i.test(content)) add("3,980 km²", "planned built area");
+  return signals.slice(0, 4);
+}
+
+function SettlementDecisionInfographic({ content }: { content: string }) {
+  const lower = content.toLowerCase();
+  const isSettlementComparison = lower.includes("rurban") && (lower.includes("consolidat") || lower.includes("agglomeration"));
+  if (!isSettlementComparison) return null;
+
+  const signals = settlementSignals(content);
+  return (
+    <section className="mb-5 overflow-hidden rounded-[22px] border border-primary-200/80 bg-[linear-gradient(135deg,#f3f6ff_0%,#ffffff_54%,#f0fbfa_100%)]">
+      <div className="flex flex-col gap-4 border-b border-primary-100/80 px-5 py-5 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p className="text-[10px] font-extrabold uppercase tracking-[0.16em] text-primary-600">Settlement decision map</p>
+          <h3 className="mt-1.5 font-sans text-xl font-extrabold tracking-tight text-secondary-950">From scattered growth to planned concentration</h3>
+          <p className="mt-2 max-w-xl text-sm leading-relaxed text-secondary-600">The evidence favors concentrating future investment in planned agglomerations while limiting further rurban expansion.</p>
+        </div>
+        <div className="inline-flex shrink-0 items-center gap-2 rounded-full border border-emerald-200 bg-white/80 px-3 py-2 text-xs font-bold text-emerald-700 shadow-sm">
+          <CheckCircle2 className="size-4" /> Preferred direction
+        </div>
+      </div>
+
+      <div className="grid gap-3 px-5 py-4 md:grid-cols-[1fr_auto_1fr] md:items-stretch">
+        <div className="rounded-2xl border border-amber-200 bg-amber-50/75 p-4">
+          <p className="text-[10px] font-extrabold uppercase tracking-[0.14em] text-amber-700">Current pattern</p>
+          <p className="mt-2 font-sans text-lg font-extrabold text-secondary-900">Rurban spread</p>
+          <p className="mt-1 text-xs leading-relaxed text-secondary-600">Small settlements and trade centers dispersed across the territory, making service delivery and land management harder.</p>
+        </div>
+        <div className="flex items-center justify-center text-primary-500"><ArrowRight className="hidden size-6 md:block" /><ArrowRight className="size-6 rotate-90 md:hidden" /></div>
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50/75 p-4">
+          <p className="text-[10px] font-extrabold uppercase tracking-[0.14em] text-emerald-700">Preferred direction</p>
+          <p className="mt-2 font-sans text-lg font-extrabold text-secondary-900">Planned agglomerations</p>
+          <p className="mt-1 text-xs leading-relaxed text-secondary-600">Direct growth and infrastructure toward stronger urban centers, with a freeze on uncontrolled expansion.</p>
+        </div>
+      </div>
+
+      {signals.length > 0 && <div className="border-t border-primary-100/80 px-5 py-4"><div className="mb-3 flex items-center gap-2"><Target className="size-4 text-primary-600" /><p className="text-xs font-extrabold uppercase tracking-[0.14em] text-secondary-600">Evidence-backed targets</p></div><div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">{signals.map((signal) => <div key={signal.label} className="rounded-xl border border-white/90 bg-white/80 px-3 py-3 shadow-sm"><p className="font-sans text-lg font-extrabold tracking-tight text-secondary-950">{signal.value}</p><p className="mt-1 text-[11px] font-medium leading-snug text-secondary-500">{signal.label}</p></div>)}</div></div>}
+
+      <div className="flex flex-wrap items-center gap-2 border-t border-primary-100/80 px-5 py-3.5 text-[11px] font-semibold text-secondary-500">
+        <span className="rounded-full bg-white/85 px-3 py-1.5 text-primary-700 shadow-sm">Evidence</span><ArrowRight className="size-3.5 text-secondary-300" /><span className="rounded-full bg-white/85 px-3 py-1.5">Compare options</span><ArrowRight className="size-3.5 text-secondary-300" /><span className="rounded-full bg-white/85 px-3 py-1.5">Approve next action</span>
+      </div>
+    </section>
+  );
+}
+
+function CaseActionCard({
+  action,
+  onApprove,
+  approving,
+}: {
+  action: CaseAction;
+  onApprove: () => void;
+  approving: boolean;
+}) {
+  const isApproved = action.status === "approved";
+  const proposal = action.proposal;
+  const items: Array<{ name?: string; indicator_name?: string; definition?: string; unit?: string; baseline_value?: number; rationale?: string; description?: string; quality_status?: string; priority?: string }> = action.kind === "indicators"
+    ? action.proposal.indicators.slice(0, 4).map((item) => ({ name: item.name, definition: item.definition, unit: item.unit }))
+    : action.kind === "baselines"
+      ? action.proposal.updates.slice(0, 4).map((item) => ({ indicator_name: item.indicator_name, baseline_value: item.baseline_value, rationale: item.rationale, quality_status: item.quality_status }))
+      : action.proposal.interventions.slice(0, 4).map((item) => ({ name: item.name, description: item.description, priority: item.priority }));
+  return (
+    <div className="mt-4 rounded-2xl border border-primary-200 bg-primary-50/45 p-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p className="text-[10px] font-extrabold uppercase tracking-[0.14em] text-primary-600">Case action · {actionLabel(action.kind)}</p>
+          <p className="mt-1 text-sm font-semibold leading-relaxed text-secondary-800">{proposal.summary}</p>
+        </div>
+        <span className={["inline-flex shrink-0 items-center rounded-full px-2.5 py-1 text-[10px] font-bold", isApproved ? "border border-emerald-200 bg-emerald-50 text-emerald-700" : "border border-amber-200 bg-amber-50 text-amber-700"].join(" ")}>{isApproved ? "Approved" : "Needs review"}</span>
+      </div>
+      {items.length > 0 && <div className="mt-3 space-y-2">{items.slice(0, 4).map((item, index) => {
+        const title = action.kind === "indicators" ? item.name : action.kind === "baselines" ? item.indicator_name : item.name;
+        const detail = action.kind === "indicators" ? item.definition : action.kind === "baselines" ? `Baseline: ${item.baseline_value} · ${item.rationale}` : item.description;
+        return <div key={`${title}-${index}`} className="rounded-xl border border-white/90 bg-white/75 px-3 py-2.5"><div className="flex items-center justify-between gap-2"><p className="text-xs font-bold text-secondary-800">{title}</p>{action.kind === "baselines" && <span className="text-[11px] font-bold text-primary-700">{item.quality_status}</span>}{action.kind === "interventions" && <span className="text-[11px] font-bold capitalize text-primary-700">{item.priority}</span>}</div><p className="mt-1 text-xs leading-relaxed text-secondary-600">{detail}</p></div>;
+      })}</div>}
+      {proposal.warnings.length > 0 && <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-800">{proposal.warnings.join(" ")}</p>}
+      {!isApproved && <div className="mt-4 flex items-center justify-between gap-3"><p className="text-[11px] leading-relaxed text-secondary-500">Review the grounded proposal before it changes the case.</p><button type="button" onClick={onApprove} disabled={approving || items.length === 0} className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-primary-600 px-3.5 py-2 text-xs font-bold text-white shadow-sm transition-colors hover:bg-primary-700 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60">{approving ? "Applying…" : `Approve ${actionLabel(action.kind).toLowerCase()}`}</button></div>}
+    </div>
+  );
+}
+
+function ScenarioComparisonCard({ comparison }: { comparison: ScenarioComparison }) {
+  return (
+    <section className="mb-5 overflow-hidden rounded-[22px] border border-secondary-200 bg-secondary-50/60">
+      <div className="flex flex-col gap-3 border-b border-secondary-200 bg-white px-5 py-4 sm:flex-row sm:items-start sm:justify-between">
+        <div><p className="text-[10px] font-extrabold uppercase tracking-[0.14em] text-primary-600">Scenario comparison</p><h3 className="mt-1 font-sans text-lg font-extrabold tracking-tight text-secondary-950">Rurban expansion vs. consolidated settlements</h3><p className="mt-1 max-w-2xl text-sm leading-relaxed text-secondary-600">{comparison.recommendation}</p></div>
+        <span className={["inline-flex shrink-0 items-center rounded-full px-2.5 py-1 text-[10px] font-bold", comparison.evidence_status === "ready" ? "border border-emerald-200 bg-emerald-50 text-emerald-700" : comparison.evidence_status === "partial" ? "border border-amber-200 bg-amber-50 text-amber-700" : "border border-secondary-200 bg-secondary-100 text-secondary-600"].join(" ")}>{comparison.evidence_status} evidence</span>
+      </div>
+      <div className="grid gap-3 p-4 md:grid-cols-2">{comparison.options.map((option) => <div key={option.key} className="rounded-2xl border border-secondary-200 bg-white p-4"><div className="flex items-center justify-between gap-2"><p className="font-sans text-sm font-extrabold text-secondary-900">{option.name}</p><span className="text-[10px] font-bold uppercase tracking-wider text-secondary-400">{option.quantification_status.replace("_", " ")}</span></div><dl className="mt-3 space-y-2 text-xs"><div><dt className="font-bold text-secondary-500">Service access</dt><dd className="mt-0.5 leading-relaxed text-secondary-700">{option.service_access}</dd></div><div><dt className="font-bold text-secondary-500">Sprawl</dt><dd className="mt-0.5 leading-relaxed text-secondary-700">{option.sprawl}</dd></div><div><dt className="font-bold text-secondary-500">Environmental risk</dt><dd className="mt-0.5 leading-relaxed text-secondary-700">{option.environmental_risk}</dd></div></dl></div>)}</div>
+      {comparison.metrics.length > 0 && <div className="border-t border-secondary-200 bg-white px-4 py-4"><div className="mb-3 flex items-center justify-between"><div><p className="text-xs font-extrabold uppercase tracking-[0.12em] text-secondary-600">Indicator mathematics</p><p className="mt-1 text-xs text-secondary-500">Only values supported by approved case indicators are calculated.</p></div><span className="text-[11px] font-semibold text-secondary-400">{comparison.approved_intervention_count} approved intervention{comparison.approved_intervention_count === 1 ? "" : "s"}</span></div><div className="overflow-x-auto"><table className="w-full min-w-[680px] text-left text-xs"><thead className="border-b border-secondary-200 text-secondary-500"><tr><th className="px-2 py-2 font-semibold">Indicator</th><th className="px-2 py-2 font-semibold">Baseline</th><th className="px-2 py-2 font-semibold">Target</th><th className="px-2 py-2 font-semibold">Current</th><th className="px-2 py-2 font-semibold">Target gap</th><th className="px-2 py-2 font-semibold">Status</th></tr></thead><tbody>{comparison.metrics.map((metric) => <tr key={metric.indicator_id} className="border-b border-secondary-100"><td className="px-2 py-2 font-semibold text-secondary-800">{metric.name}<span className="ml-1 text-secondary-400">({metric.unit})</span></td><td className="px-2 py-2 text-secondary-600">{metric.baseline_value ?? "—"}</td><td className="px-2 py-2 text-secondary-600">{metric.target_value ?? "—"}</td><td className="px-2 py-2 text-secondary-600">{metric.current_value ?? "—"}</td><td className="px-2 py-2 font-semibold text-primary-700">{metric.target_gap ?? "—"}</td><td className="px-2 py-2"><span className="rounded-full bg-secondary-100 px-2 py-1 text-[10px] font-bold text-secondary-600">{metric.status.replaceAll("_", " ")}</span></td></tr>)}</tbody></table></div></div>}
+      <details className="border-t border-secondary-200 px-4 py-3"><summary className="cursor-pointer text-xs font-bold text-secondary-600">Show equations and evidence gaps</summary><div className="mt-3 grid gap-3 md:grid-cols-2"><div><p className="text-[10px] font-extrabold uppercase tracking-wider text-secondary-400">Equations</p><ul className="mt-2 space-y-1 text-xs leading-relaxed text-secondary-600">{comparison.equations.map((equation) => <li key={equation}>• {equation}</li>)}</ul></div><div><p className="text-[10px] font-extrabold uppercase tracking-wider text-secondary-400">Evidence gaps</p>{comparison.evidence_gaps.length > 0 ? <ul className="mt-2 space-y-1 text-xs leading-relaxed text-amber-700">{comparison.evidence_gaps.map((gap) => <li key={gap}>• {gap}</li>)}</ul> : <p className="mt-2 text-xs text-emerald-700">No evidence gaps were detected.</p>}</div></div></details>
+    </section>
+  );
 }
 
 function MessageBubble({
   message,
   onAnalyse,
+  onApproveAction,
+  approvingActionId,
 }: {
   message: Message;
   onAnalyse?: (msg: Message) => void;
+  onApproveAction?: (messageId: string, action: CaseAction) => void;
+  approvingActionId?: string | null;
 }) {
   const isUser = message.role === "user";
   const wasOptimized = isUser && message.originalInput && message.originalInput !== message.content;
@@ -548,30 +714,44 @@ function MessageBubble({
 
   return (
     <div className={["group flex gap-3", isUser ? "justify-end" : "justify-start"].join(" ")}>
-      <div className={["flex flex-col max-w-[75%]", isUser ? "items-end" : "items-start"].join(" ")}>
+      <div className={["flex flex-col", isUser ? "items-end max-w-[75%]" : "items-start w-full max-w-[92%] md:max-w-[86%]"].join(" ")}>
         {wasOptimized && (
           <p className="text-xs text-secondary-400 font-sans mb-1 px-1 line-through">{message.originalInput}</p>
         )}
-        <div
-          className={[
-            "px-4 py-3 rounded-[22px] text-sm font-sans leading-relaxed",
-            isUser
-              ? "bg-primary-600 text-white rounded-br-md shadow-[0_6px_18px_rgba(26,46,204,0.16)]"
-              : message.isError
-                ? "bg-error-50 text-error-800 border border-error-200 rounded-tl-sm"
-                : "bg-transparent text-secondary-800 rounded-tl-sm",
-          ].join(" ")}
-        >
-          {message.streaming ? (
-            <TypingDots />
-          ) : (
-            <MessagePrimitive.Parts
-              components={{
-                Text: AssistantMarkdownText,
-              }}
-            />
-          )}
-        </div>
+        {isUser ? (
+          <div className="rounded-[22px] rounded-br-md bg-primary-600 px-4 py-3 text-sm leading-relaxed text-white shadow-[0_8px_22px_rgba(26,46,204,0.16)]">
+            <MarkdownContent content={message.content} isUser />
+          </div>
+        ) : message.isError ? (
+          <div className="w-full rounded-[22px] rounded-tl-md border border-error-200 bg-error-50 px-4 py-3 text-sm leading-relaxed text-error-800">
+            <div className="mb-2 flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.14em] text-error-600">
+              <span className="size-2 rounded-full bg-error-500" /> Unable to complete
+            </div>
+            <MarkdownContent content={message.content} />
+          </div>
+        ) : (
+          <article className="relative w-full overflow-hidden rounded-[24px] border border-secondary-200/90 bg-white shadow-[0_12px_34px_rgba(15,23,42,0.07)]">
+            <div className="h-1 w-full bg-gradient-to-r from-primary-500 via-primary-400 to-sky-300" />
+            <header className="flex items-center justify-between gap-3 border-b border-secondary-100 px-5 py-3.5">
+              <div className="flex min-w-0 items-center gap-2.5">
+                <div className="flex size-7 shrink-0 items-center justify-center rounded-[10px] bg-primary-600 text-[9px] font-black tracking-[0.08em] text-white shadow-sm">DC</div>
+                <div className="min-w-0">
+                  <p className="truncate text-[11px] font-bold uppercase tracking-[0.14em] text-secondary-500">Decision brief</p>
+                  <p className="mt-0.5 text-xs text-secondary-400">Evidence-grounded policy analysis</p>
+                </div>
+              </div>
+              <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[10px] font-bold text-emerald-700">
+                <span className="size-1.5 rounded-full bg-emerald-500" /> Grounded
+              </span>
+            </header>
+            {!message.streaming && message.scenario && <div className="px-5 pt-5"><ScenarioComparisonCard comparison={message.scenario} /></div>}
+            {!message.streaming && <SettlementDecisionInfographic content={message.content} />}
+            <div className="px-5 py-5 text-[15px] leading-[1.75] text-secondary-800 [&_h1]:mb-3 [&_h1]:font-sans [&_h1]:text-xl [&_h1]:font-extrabold [&_h1]:tracking-tight [&_h2]:mb-2 [&_h2]:mt-6 [&_h2]:font-sans [&_h2]:text-sm [&_h2]:font-extrabold [&_h2]:uppercase [&_h2]:tracking-[0.08em] [&_h2]:text-primary-700 [&_h3]:mb-2 [&_h3]:mt-5 [&_h3]:font-sans [&_h3]:text-base [&_h3]:font-bold [&_h3]:text-secondary-900 [&_p]:mb-3 [&_p:last-child]:mb-0 [&_strong]:font-bold [&_strong]:text-secondary-950 [&_ul]:my-3 [&_ul]:space-y-2 [&_ul]:pl-5 [&_ol]:my-3 [&_ol]:space-y-2 [&_ol]:pl-5 [&_li]:pl-1 [&_li::marker]:font-bold [&_li::marker]:text-primary-500 [&_blockquote]:my-4 [&_blockquote]:border-l-4 [&_blockquote]:border-primary-300 [&_blockquote]:bg-primary-50/60 [&_blockquote]:px-4 [&_blockquote]:py-3 [&_blockquote]:font-medium [&_blockquote]:text-secondary-700 [&_a]:font-semibold [&_a]:text-primary-600">
+              {message.streaming ? <TypingDots /> : <MarkdownContent content={message.content} />}
+            </div>
+            {!message.streaming && message.action && onApproveAction && <div className="px-5 pb-5"><CaseActionCard action={message.action} approving={approvingActionId === message.id} onApprove={() => onApproveAction(message.id, message.action!)} /></div>}
+          </article>
+        )}
 
         {!isUser && !message.streaming && (message.intent || message.telemetry?.intent) && (
           <IntentBadge intent={message.intent ?? message.telemetry?.intent ?? "unknown"} />
@@ -649,6 +829,8 @@ type PromptMessageMetadata = {
   telemetry?: QueryResult["telemetry"];
   answerMode?: QueryResult["answer_mode"];
   streaming?: boolean;
+  action?: CaseAction;
+  scenario?: ScenarioComparison;
 };
 
 function assistantMessageMetadata(message: Message): PromptMessageMetadata {
@@ -662,6 +844,8 @@ function assistantMessageMetadata(message: Message): PromptMessageMetadata {
     telemetry: message.telemetry,
     answerMode: message.answerMode,
     streaming: message.streaming,
+    action: message.action,
+    scenario: message.scenario,
   };
 }
 
@@ -716,19 +900,25 @@ function localMessageFromAssistantState(message: MessageState): Message {
     intent: custom.intent,
     telemetry: custom.telemetry,
     answerMode: custom.answerMode,
+    action: custom.action,
+    scenario: custom.scenario,
   };
 }
 
 function AssistantUiMessage({
   message,
   onAnalyse,
+  onApproveAction,
+  approvingActionId,
 }: {
   message: MessageState;
   onAnalyse?: (message: Message) => void;
+  onApproveAction?: (messageId: string, action: CaseAction) => void;
+  approvingActionId?: string | null;
 }) {
   return (
     <MessagePrimitive.Root className="contents">
-      <MessageBubble message={localMessageFromAssistantState(message)} onAnalyse={onAnalyse} />
+      <MessageBubble message={localMessageFromAssistantState(message)} onAnalyse={onAnalyse} onApproveAction={onApproveAction} approvingActionId={approvingActionId} />
     </MessagePrimitive.Root>
   );
 }
@@ -862,7 +1052,10 @@ export function PromptComposer({
 
 export default function PromptPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const caseId = searchParams.get("case_id");
   const [messages, setMessages] = useState<Message[]>([]);
+  const [caseContext, setCaseContext] = useState<TransformationCase | null>(null);
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(true);
@@ -871,6 +1064,7 @@ export default function PromptPage() {
   const [pendingOriginal, setPendingOriginal] = useState<string | null>(null);
   const [pendingOptimized, setPendingOptimized] = useState<string | null>(null);
   const [optimizing, setOptimizing] = useState(false);
+  const [approvingActionId, setApprovingActionId] = useState<string | null>(null);
 
   // Per-user conversation history (persisted on the backend).
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
@@ -888,6 +1082,24 @@ export default function PromptPage() {
   const activeRevealCancelRef = useRef<(() => void) | null>(null);
   const activeMessageIdRef = useRef<string | null>(null);
   const cancelledRef = useRef(false);
+
+  useEffect(() => {
+    if (!caseId) {
+      setCaseContext(null);
+      return;
+    }
+    let cancelled = false;
+    void getTransformationCase(caseId)
+      .then((caseDetail) => {
+        if (!cancelled) setCaseContext(caseDetail);
+      })
+      .catch(() => {
+        if (!cancelled) setCaseContext(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [caseId]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -1020,7 +1232,59 @@ export default function PromptPage() {
     cancelledRef.current = false;
 
     try {
-      const data = await queryRag(content, 5, { signal: controller.signal });
+      if (caseContext && detectsScenarioPrompt(content)) {
+        const comparison = await compareCaseScenarios(caseContext.id, content);
+        if (cancelledRef.current) return;
+        const answer = comparison.recommendation;
+        const finalMsg: Message = {
+          id: aiMsgId,
+          role: "assistant",
+          content: answer,
+          timestamp: sentAt,
+          streaming: false,
+          prompt: content,
+          scenario: comparison,
+        };
+        setMessages((prev) => prev.map((m) => (m.id === aiMsgId ? finalMsg : m)));
+        activeRequestRef.current = null;
+        activeMessageIdRef.current = null;
+        setIsStreaming(false);
+        if (conversationId) void persistTurn(conversationId, userMsg, finalMsg);
+        return;
+      }
+      const caseActionKind = caseContext ? detectCaseAction(content) : null;
+      if (caseContext && caseActionKind) {
+        const action = await buildCaseAction(caseContext.id, caseActionKind, content);
+        if (cancelledRef.current) return;
+        const answer = action.proposal.summary;
+        const finalMsg: Message = {
+          id: aiMsgId,
+          role: "assistant",
+          content: answer,
+          timestamp: sentAt,
+          streaming: false,
+          prompt: content,
+          action,
+        };
+        setMessages((prev) => prev.map((m) => (m.id === aiMsgId ? finalMsg : m)));
+        activeRequestRef.current = null;
+        activeMessageIdRef.current = null;
+        setIsStreaming(false);
+        // Proposals are intentionally session-local in history: persisting a pending
+        // approval card would make it look actionable after the case has changed.
+        if (conversationId) void persistTurn(conversationId, userMsg, { ...finalMsg, action: undefined });
+        return;
+      }
+      const queryContent = caseContext
+        ? [
+            `Settlement case context: ${caseContext.title}`,
+            `Territory: ${caseContext.territory || "Not specified"}`,
+            `Problem: ${caseContext.problem_statement}`,
+            `Desired outcome: ${caseContext.desired_outcome}`,
+            `User request: ${content}`,
+          ].join("\n")
+        : content;
+      const data = await queryRag(queryContent, 5, { signal: controller.signal });
       if (cancelledRef.current) return;
       activeRequestRef.current = null;
       const answer = data.answer || "No answer returned.";
@@ -1094,6 +1358,22 @@ export default function PromptPage() {
       activeMessageIdRef.current = null;
       // Errors are deliberately not persisted as assistant messages. They are
       // transient UI feedback and should never reappear in chat history.
+    }
+  }
+
+  async function handleApproveAction(messageId: string, action: CaseAction) {
+    if (!caseContext || action.status === "approved") return;
+    setApprovingActionId(messageId);
+    try {
+      if (action.kind === "indicators") await approveCaseIndicators(caseContext.id, action.proposal);
+      if (action.kind === "baselines") await approveCaseBaselines(caseContext.id, action.proposal);
+      if (action.kind === "interventions") await approveCaseInterventions(caseContext.id, action.proposal);
+      setMessages((previous) => previous.map((message) => message.id === messageId ? { ...message, action: { ...action, status: "approved" } } : message));
+    } catch (err) {
+      const detail = err instanceof RagApiError ? err.message : "The proposal could not be applied to this case.";
+      setMessages((previous) => previous.map((message) => message.id === messageId ? { ...message, content: `${message.content}\n\n**Approval failed:** ${detail}` } : message));
+    } finally {
+      setApprovingActionId(null);
     }
   }
 
@@ -1212,6 +1492,7 @@ export default function PromptPage() {
   }
 
   const showPreview = !!pendingOriginal && !!pendingOptimized;
+  const suggestions = caseContext ? SETTLEMENT_SUGGESTIONS : SUGGESTIONS;
 
   return (
     <AppLayout fullHeight>
@@ -1355,14 +1636,25 @@ export default function PromptPage() {
           isStreaming={isStreaming}
           optimizing={optimizing}
           onNew={handleSend}
-          onCancel={handleCancel}
-          onReload={handleReload}
-          onEdit={handleEdit}
-        >
+           onCancel={handleCancel}
+           onReload={handleReload}
+           onEdit={handleEdit}
+         >
         <div className="flex-1 flex flex-col overflow-hidden">
           <div className="flex-1 overflow-y-auto px-4 py-6">
             <div className="mx-auto w-full max-w-3xl flex flex-col gap-6">
-              {messages.length === 0 && (
+               {caseContext && (
+                 <div className="rounded-2xl border border-primary-200 bg-primary-50/70 px-4 py-3">
+                   <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-primary-600">Settlement case context</p>
+                   <div className="mt-1 flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between">
+                     <p className="text-sm font-bold text-secondary-900">{caseContext.title}</p>
+                     <p className="text-xs text-secondary-500">{caseContext.territory || "Territory not specified"}</p>
+                   </div>
+                   <p className="mt-2 text-xs leading-relaxed text-secondary-600">Chat actions will be interpreted against this case and its linked evidence.</p>
+                 </div>
+               )}
+
+               {messages.length === 0 && (
                     <div className="flex flex-col items-center justify-center pt-20 pb-10 text-center">
                       <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-primary-200 bg-primary-50 px-3 py-1.5 text-[11px] font-bold uppercase tracking-[0.14em] text-primary-600 font-sans">
                         <span className="size-1.5 rounded-full bg-primary-500" />
@@ -1370,14 +1662,14 @@ export default function PromptPage() {
                       </div>
                       <h2 className="text-3xl font-extrabold tracking-tight text-secondary-950 font-sans mb-3">What should we investigate?</h2>
                       <p className="text-secondary-500 text-sm font-sans max-w-md leading-relaxed">
-                        Ask <span className="text-primary-600 font-semibold">DC-TIM</span> about your ingested policies and documents. Every supported answer returns workspace citations.
+                         {caseContext ? <>Ask <span className="text-primary-600 font-semibold">DC-TIM</span> to move this settlement case forward. Every supported answer returns workspace citations.</> : <>Ask <span className="text-primary-600 font-semibold">DC-TIM</span> about your ingested policies and documents. Every supported answer returns workspace citations.</>}
                       </p>
                 </div>
               )}
 
               {showSuggestions && messages.length === 0 && (
                 <div className="grid sm:grid-cols-2 gap-3">
-                  {SUGGESTIONS.map((s) => (
+                   {suggestions.map((s) => (
                     <button
                       key={s}
                       type="button"
@@ -1393,8 +1685,8 @@ export default function PromptPage() {
 
               <ThreadPrimitive.Root className="contents">
                 <ThreadPrimitive.Messages>
-                  {({ message }) => (
-                    <AssistantUiMessage message={message} onAnalyse={handleAnalyse} />
+                {({ message }) => (
+                    <AssistantUiMessage message={message} onAnalyse={handleAnalyse} onApproveAction={handleApproveAction} approvingActionId={approvingActionId} />
                   )}
                 </ThreadPrimitive.Messages>
               </ThreadPrimitive.Root>
