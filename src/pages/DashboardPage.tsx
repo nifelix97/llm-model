@@ -3,11 +3,13 @@ import { Link } from "react-router-dom";
 import {
   AlertTriangle,
   ArrowLeft,
+  ArrowRight,
   BarChart3,
   BookOpen,
   Check,
   ChevronRight,
   Clock,
+  Download,
   FileText,
   History,
   Layers,
@@ -58,6 +60,7 @@ import { useAuth } from "../context/AuthContext";
 import {
   analyzePolicy,
   createPolicyArtifact,
+  downloadPolicyArtifact,
   getPolicyArtifact,
   listPolicyArtifacts,
   MODEL_DISPLAY_NAME,
@@ -408,6 +411,7 @@ function PolicyAnalysisView({
   const [draftSaved, setDraftSaved]       = useState(Boolean(existingPolicy));
   const [editRequest, setEditRequest]     = useState("");
   const [editOpen, setEditOpen]           = useState(false);
+  const [exporting, setExporting]         = useState<string | null>(null);
 
   // ── Loading state ──
   if (loading) {
@@ -460,7 +464,13 @@ function PolicyAnalysisView({
     { label: "Likelihood", score: result.likelihood.score },
   ].filter((d): d is { label: string; score: number } => d.score !== null);
 
-  const dimensionData = result.dimensions.map((d) => ({ dimension: d.label, score: d.score * 100 }));
+  const dimensionData = result.dimensions
+    .filter((d) => Number.isFinite(d.score))
+    .map((d) => ({
+      dimension: d.label,
+      score: Math.max(0, Math.min(100, d.score * 100)),
+      rationale: d.rationale,
+    }));
   const metricData    = result.metrics.filter((m) => m.baseline !== null || m.projected !== null).map((m) => ({ label: m.label, Baseline: m.baseline ?? undefined, Projected: m.projected ?? undefined }));
   const riskData      = result.risks.map((r) => ({ ...r, likelihood: r.likelihood * 100, impact: r.impact * 100 }));
   const phaseData     = result.phases.map((p) => ({ ...p, progress: p.progress * 100 }));
@@ -519,6 +529,25 @@ function PolicyAnalysisView({
     finally     { setActionLoading(null); }
   };
 
+  const downloadPolicy = async (format: "pdf" | "docx" | "markdown") => {
+    if (!savedPolicy) return;
+    setExporting(format);
+    setActionError(null);
+    try {
+      const result = await downloadPolicyArtifact(savedPolicy.id, format);
+      const url = URL.createObjectURL(result.blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = result.filename;
+      anchor.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setActionError(errorMessage(e, "The policy brief could not be downloaded."));
+    } finally {
+      setExporting(null);
+    }
+  };
+
   // ── Render ──
   return (
     <AppLayout>
@@ -552,6 +581,14 @@ function PolicyAnalysisView({
                   {evidenceStatusConfig.icon}{evidenceStatusConfig.label}
                 </UiBadge>
                 <UiBadge variant="outline">{MODEL_DISPLAY_NAME}</UiBadge>
+                {isSavedPolicy && <>
+                  <Button variant="secondary" size="sm" onClick={() => void downloadPolicy("pdf")} loading={exporting === "pdf"} aria-label="Download policy brief as PDF">
+                    <Download className="mr-1.5 size-3.5" />PDF
+                  </Button>
+                  <Button variant="secondary" size="sm" onClick={() => void downloadPolicy("docx")} loading={exporting === "docx"} aria-label="Download policy brief as Word document">
+                    <Download className="mr-1.5 size-3.5" />Word
+                  </Button>
+                </>}
                 <Link to="/prompt" className="inline-flex items-center gap-1.5 rounded-xl bg-primary-500 px-3 py-1.5 font-sans text-xs font-bold text-white hover:bg-primary-600 transition-colors">
                   <Zap className="size-3" />New analysis
                 </Link>
@@ -604,7 +641,7 @@ function PolicyAnalysisView({
                 </ChartCard>
 
                 <ChartCard title="Policy dimensions" subtitle="Multi-axis assessment from retrieved evidence">
-                  {dimensionData.length > 0 ? (
+                  {dimensionData.length >= 3 ? (
                     <ResponsiveContainer width="100%" height={260}>
                       <RadarChart data={dimensionData} cx="50%" cy="50%" outerRadius="68%">
                         <PolarGrid stroke={C.grid} />
@@ -614,7 +651,35 @@ function PolicyAnalysisView({
                         <Tooltip formatter={(v) => `${Math.round(Number(v))}%`} contentStyle={{ borderRadius: 12, border: "1px solid #E2E8F0" }} />
                       </RadarChart>
                     </ResponsiveContainer>
+                  ) : dimensionData.length > 0 ? (
+                    <ResponsiveContainer width="100%" height={Math.max(150, dimensionData.length * 72)}>
+                      <BarChart data={dimensionData} layout="vertical" margin={{ top: 8, right: 28, bottom: 8, left: 12 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke={C.grid} horizontal={false} />
+                        <XAxis type="number" domain={[0, 100]} tickFormatter={(v) => `${v}%`} tick={{ fontSize: 10, fill: "#94A3B8" }} axisLine={false} tickLine={false} />
+                        <YAxis type="category" dataKey="dimension" width={120} tick={{ fontSize: 10, fill: "#64748B" }} axisLine={false} tickLine={false} />
+                        <Tooltip formatter={(v) => `${Math.round(Number(v))}%`} contentStyle={{ borderRadius: 12, border: "1px solid #E2E8F0" }} />
+                        <Bar dataKey="score" name="Score" fill={C.violet} radius={[0, 8, 8, 0]} maxBarSize={28} />
+                      </BarChart>
+                    </ResponsiveContainer>
                   ) : <p className="py-10 text-center font-sans text-sm text-secondary-400">No dimension scores were supported.</p>}
+                  {dimensionData.length > 0 && (
+                    <div className="mt-4 border-t border-secondary-100 pt-4">
+                      <p className="font-sans text-xs font-bold uppercase tracking-[0.12em] text-secondary-500">What this dimension means</p>
+                      <div className="mt-2 space-y-2">
+                        {dimensionData.map((item) => (
+                          <div key={item.dimension} className="rounded-xl border border-secondary-100 bg-secondary-50/60 px-3 py-2.5">
+                            <div className="flex items-center justify-between gap-3">
+                              <span className="font-sans text-sm font-semibold text-secondary-800">{item.dimension}</span>
+                              <span className="rounded-full bg-violet-50 px-2 py-0.5 font-sans text-xs font-bold text-violet-700">{Math.round(item.score)}%</span>
+                            </div>
+                            <p className="mt-1 font-sans text-xs leading-relaxed text-secondary-600">
+                              {item.rationale || "No explanation was returned for this dimension."}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </ChartCard>
 
                 <ChartCard title="Baseline vs projection" subtitle="Numeric indicators from analysis">
@@ -908,6 +973,67 @@ function PolicyOverviewCharts({ policies }: { policies: PolicyArtifactSummary[] 
 
 // ─── Policy card (grid) ───────────────────────────────────────────────────────
 
+function PolicyNextStep({ policy, onSelect }: {
+  policy: PolicyArtifactSummary;
+  onSelect: (policy: PolicyArtifactSummary) => void;
+}) {
+  return (
+    <section className="relative mb-6 overflow-hidden rounded-[1.75rem] border border-primary-200 bg-primary-50/45 px-5 py-6 text-secondary-900 shadow-sm sm:px-7 sm:py-7">
+      <div className="pointer-events-none absolute -right-20 -top-24 size-72 rounded-full bg-primary-200/45 blur-3xl" />
+      <div className="pointer-events-none absolute bottom-0 left-1/3 size-36 rounded-full bg-violet-100/70 blur-3xl" />
+
+      <div className="relative grid gap-7 lg:grid-cols-[minmax(0,1fr)_19rem] lg:items-end">
+        <div>
+          <div className="flex flex-wrap items-center gap-2 font-sans text-[11px] font-bold uppercase tracking-[0.16em] text-primary-700">
+            <span>Continue your policy work</span>
+            <span className="rounded-full border border-primary-200 bg-white/75 px-2 py-0.5 text-[10px] tracking-wider text-secondary-600">Next step</span>
+          </div>
+          <h2 className="mt-3 max-w-xl font-sans text-2xl font-extrabold tracking-tight text-secondary-950 sm:text-[2rem]">
+            Review the evidence behind your policy.
+          </h2>
+          <p className="mt-2 max-w-2xl font-sans text-sm leading-relaxed text-secondary-600">
+            Open the latest artifact to see its evidence, indicators, risks, and recommendations before deciding what to refine or implement.
+          </p>
+
+          <div className="mt-6 grid max-w-2xl gap-2 sm:grid-cols-3">
+            {[
+              { label: "Create policy", done: true },
+              { label: "Review evidence", done: false },
+              { label: "Refine or act", done: false },
+            ].map((step, index) => (
+              <div key={step.label} className="flex items-center gap-2 rounded-xl border border-primary-200/80 bg-white/70 px-3 py-2.5 shadow-sm">
+                <span className={cn("flex size-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold", step.done ? "bg-success-500 text-white" : "border border-secondary-300 text-secondary-500")}>
+                  {step.done ? <Check className="size-3" strokeWidth={3} /> : index + 1}
+                </span>
+                <span className={cn("font-sans text-xs font-semibold", step.done ? "text-secondary-900" : "text-secondary-600")}>{step.label}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="rounded-2xl border border-primary-200 bg-white/90 p-4 shadow-sm backdrop-blur-sm">
+          <div className="flex items-center justify-between gap-3">
+            <p className="font-sans text-[10px] font-bold uppercase tracking-[0.14em] text-secondary-500">Latest artifact</p>
+            <UiBadge variant={policy.has_analysis ? "success" : "warning"}>
+              {policy.has_analysis ? "Analysis ready" : "Needs analysis"}
+            </UiBadge>
+          </div>
+          <p className="mt-3 line-clamp-2 font-sans text-base font-bold leading-snug text-secondary-900">{policy.title}</p>
+          <p className="mt-1 truncate font-sans text-xs capitalize text-secondary-500">{policy.category || "Uncategorized"}</p>
+          <button
+            type="button"
+            onClick={() => onSelect(policy)}
+            className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-primary-600 px-3 py-2.5 font-sans text-sm font-bold text-white transition-colors hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-200"
+          >
+            Open policy analysis
+            <ArrowRight className="size-4" />
+          </button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function PolicyCard({ policy, onSelect }: { policy: PolicyArtifactSummary; onSelect: (p: PolicyArtifactSummary) => void }) {
   return (
     <button
@@ -916,18 +1042,21 @@ function PolicyCard({ policy, onSelect }: { policy: PolicyArtifactSummary; onSel
       className="group w-full rounded-2xl border border-secondary-100 bg-white p-5 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary-200 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-primary-300"
     >
       <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-1.5">
-            <h3 className="truncate font-sans text-sm font-bold text-secondary-900 group-hover:text-primary-700 transition-colors">{policy.title}</h3>
+        <div className="flex min-w-0 flex-1 items-start gap-3">
+          <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary-50 text-primary-600 ring-4 ring-primary-50/60">
+            <FileText className="size-4" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <h3 className="line-clamp-2 font-sans text-sm font-bold leading-snug text-secondary-900 transition-colors group-hover:text-primary-700">{policy.title}</h3>
+            <p className="mt-1 truncate font-sans text-xs capitalize text-secondary-400">{policy.category || "Uncategorized"}</p>
           </div>
-          <p className="mt-0.5 font-sans text-xs capitalize text-secondary-400">{policy.category}</p>
         </div>
         <ChevronRight className="mt-0.5 size-4 shrink-0 text-secondary-300 transition-transform group-hover:translate-x-0.5 group-hover:text-primary-500" />
       </div>
 
       <div className="mt-3 flex flex-wrap gap-1.5">
         <UiBadge variant="success">Created</UiBadge>
-        {policy.has_analysis && <UiBadge variant="default">Analysis</UiBadge>}
+        <UiBadge variant={policy.has_analysis ? "default" : "warning"}>{policy.has_analysis ? "Analysis ready" : "Needs analysis"}</UiBadge>
       </div>
 
       <div className="mt-4 flex items-center justify-between">
@@ -935,8 +1064,11 @@ function PolicyCard({ policy, onSelect }: { policy: PolicyArtifactSummary; onSel
           <History className="size-3" />
           Rev {policy.revision}
         </div>
-        <p className="font-sans text-[11px] text-secondary-400">{formatDate(policy.updated_at)}</p>
+        <span className="inline-flex items-center gap-1 font-sans text-[11px] font-semibold text-primary-600 transition-colors group-hover:text-primary-700">
+          Open analysis <ArrowRight className="size-3 transition-transform group-hover:translate-x-0.5" />
+        </span>
       </div>
+      <p className="mt-2 font-sans text-[11px] text-secondary-400">Updated {formatDate(policy.updated_at)} · Revision {policy.revision}</p>
     </button>
   );
 }
@@ -1128,6 +1260,9 @@ export default function DashboardPage() {
   const totalCategories = new Set(policies.map((p) => p.category.trim() || "Uncategorized")).size;
   const totalUpdates    = policies.reduce((s, p) => s + Math.max(0, p.revision - 1), 0);
   const latestUpdate    = policies.reduce<string | null>((l, p) => !l || new Date(p.updated_at).getTime() > new Date(l).getTime() ? p.updated_at : l, null);
+  const latestPolicy    = policies.reduce<PolicyArtifactSummary | null>((latest, policy) => (
+    !latest || new Date(policy.updated_at).getTime() > new Date(latest.updated_at).getTime() ? policy : latest
+  ), null);
 
   // ── Main list view ──
   return (
@@ -1140,7 +1275,7 @@ export default function DashboardPage() {
             <div>
               <p className="mb-1 font-sans text-[11px] font-bold uppercase tracking-widest text-primary-500">Workspace policies</p>
               <h1 className="font-sans text-2xl font-extrabold tracking-tight text-secondary-900">Policy Dashboard</h1>
-              <p className="mt-1 font-sans text-sm text-secondary-500">Select any policy artifact to view its implementation analysis.</p>
+              <p className="mt-1 max-w-xl font-sans text-sm leading-relaxed text-secondary-500">Your policy artifact is the starting point. Open it to review evidence, understand gaps, and decide what to do next.</p>
             </div>
             <div className="flex items-center gap-2">
               {canManageData && <Link to="/models/new"><Button variant="ghost" size="sm">Add data</Button></Link>}
@@ -1176,16 +1311,18 @@ export default function DashboardPage() {
                 <StatCard icon={<Clock className="size-5" />}      label="Last updated"   value={latestUpdate ? formatDate(latestUpdate) : "—"} sub="workspace artifact" color="teal"    />
               </div>
 
-              {/* Overview charts */}
-              <PolicyOverviewCharts policies={policies} />
+              {latestPolicy && <PolicyNextStep policy={latestPolicy} onSelect={selectPolicy} />}
+
+              {/* Charts become useful once the workspace has enough artifacts to compare. */}
+              {policies.length > 1 && <PolicyOverviewCharts policies={policies} />}
 
               <Separator className="mb-6" />
 
               {/* Policy grid */}
               <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <h2 className="font-sans text-base font-bold text-secondary-900">Saved policies</h2>
-                  <p className="mt-0.5 font-sans text-xs text-secondary-500">Click any card to open its full evidence analysis.</p>
+                  <h2 className="font-sans text-base font-bold text-secondary-900">Policy library</h2>
+                  <p className="mt-0.5 font-sans text-xs text-secondary-500">Open an artifact to revisit its evidence analysis and recommendations.</p>
                 </div>
                 <UiBadge variant="default">{policies.length} artifact{policies.length === 1 ? "" : "s"}</UiBadge>
               </div>
