@@ -44,7 +44,8 @@ export type PermissionKey =
   | "data:view"
   | "data:manage"
   | "monitoring:view"
-  | "users:manage";
+  | "users:manage"
+  | "planning:manage";
 
 export interface ManagedUser extends AuthUser {
   is_active: boolean;
@@ -907,6 +908,66 @@ export async function updatePolicyArtifact(
     body: JSON.stringify(payload),
   });
   return parseJson<PolicyArtifact>(res);
+}
+
+export type PlanningFeature = {
+  type: "Feature";
+  id: string;
+  geometry: {
+    type: "Point" | "LineString" | "Polygon";
+    coordinates: number[] | number[][] | number[][][];
+  };
+  properties: Record<string, string | number | boolean | null>;
+};
+
+export type PlanningScenario = {
+  id: string;
+  name: string;
+  year: number;
+  policy_id: string | null;
+  features: { type: "FeatureCollection"; features: PlanningFeature[] };
+  created_at: string;
+  updated_at: string;
+};
+
+export type PlanningScenarioPayload = Pick<PlanningScenario, "name" | "year" | "features"> & { policy_id?: string | null };
+
+export type RwandaRoadsPage = {
+  features: {
+    id?: number;
+    properties?: { type?: string; Type?: string; road_no?: string };
+    geometry?: { type?: string; coordinates?: number[][] | number[][][] };
+  }[];
+  exceededTransferLimit?: boolean;
+  error?: { message?: string };
+};
+
+export async function fetchRwandaRoadsPage(offset: number, signal: AbortSignal): Promise<RwandaRoadsPage> {
+  const res = await apiFetch(`/api/v1/geodata/rwanda-roads?offset=${encodeURIComponent(String(offset))}`, {}, { signal });
+  return parseJson<RwandaRoadsPage>(res);
+}
+
+export async function listPlanningScenarios(policyId?: string, includeUnlinked = false): Promise<PlanningScenario[]> {
+  const params = new URLSearchParams();
+  if (policyId) params.set("policy_id", policyId);
+  if (includeUnlinked) params.set("include_unlinked", "true");
+  const query = params.size ? `?${params.toString()}` : "";
+  const res = await apiFetch(`/api/v1/planning/scenarios${query}`);
+  return parseJson<PlanningScenario[]>(res);
+}
+
+export async function savePlanningScenario(payload: PlanningScenarioPayload, id?: string): Promise<PlanningScenario> {
+  const res = await apiFetch(id ? `/api/v1/planning/scenarios/${encodeURIComponent(id)}` : "/api/v1/planning/scenarios", {
+    method: id ? "PUT" : "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  return parseJson<PlanningScenario>(res);
+}
+
+export async function deletePlanningScenario(id: string): Promise<void> {
+  const res = await apiFetch(`/api/v1/planning/scenarios/${encodeURIComponent(id)}`, { method: "DELETE" });
+  if (!res.ok) throw new RagApiError(await readErrorDetail(res), res.status);
 }
 
 export async function downloadPolicyArtifact(

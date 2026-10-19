@@ -31,11 +31,12 @@ const PERMISSIONS: { value: PermissionKey; label: string; description: string }[
   { value: "data:manage", label: "Manage Data Lake", description: "Add, edit, and remove evidence sources." },
   { value: "monitoring:view", label: "Policy monitoring", description: "View lifecycle stages and evidence briefings." },
   { value: "users:manage", label: "Manage users", description: "Create users and change roles and permissions." },
+  { value: "planning:manage", label: "Planning Studio", description: "Create and manage proposed planning scenarios in the Digital Twin." },
 ];
 
 const ROLE_DEFAULTS: Record<UserRole, PermissionKey[]> = {
   admin: PERMISSIONS.map((permission) => permission.value),
-  policy_manager: ["dashboard:view", "policy:manage", "prompt:use", "optimize:run", "data:view", "data:manage", "monitoring:view"],
+  policy_manager: ["dashboard:view", "policy:manage", "prompt:use", "optimize:run", "data:view", "data:manage", "monitoring:view", "planning:manage"],
   analyst: ["dashboard:view", "prompt:use", "optimize:run", "data:view", "monitoring:view"],
   viewer: ["dashboard:view", "monitoring:view"],
 };

@@ -76,6 +76,26 @@ src/
 | `/models/new`    | Model configuration          | Protected |
 | `*`              | 404 not found                | Public    |
 
+## Digital Twin map renderer
+
+The Digital Twin uses CesiumJS for its map by default. Set the public browser
+configuration `VITE_CESIUM_ION_ACCESS_TOKEN` in `.env.local` to enable Cesium
+World Terrain and Cesium OSM Buildings (asset access must be enabled for both).
+Copy `.env.example` to `.env.local`, set the token, and restart Vite. Without an
+authorized token, the Esri imagery map remains available over an ellipsoid and
+the UI reports that terrain/buildings are unavailable. `?sceneDebug=1` displays
+the camera coordinates, terrain/building request state, tile counts, and a
+temporary Kigali marker. `?engine=three` is the rollback renderer, and
+`?engine=prototype` opens the earlier isolated buildings diagnostics view.
+
+Cesium OSM Buildings and World Terrain stream through Cesium ion; OSM-derived
+content requires © OpenStreetMap contributors attribution. Esri World Imagery
+attribution is displayed on the map. Esri service access and commercial use are
+subject to the applicable [Esri service terms](https://www.esri.com/en-us/legal/terms/web-site-service)
+and its third-party imagery restrictions; verify that your deployment's use is
+licensed. The ion token is browser-visible, so restrict it to required assets
+and allowed origins. Never use a server secret in a Vite `VITE_` variable.
+
 ## Building for Production
 
 ```bash

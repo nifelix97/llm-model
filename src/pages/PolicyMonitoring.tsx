@@ -32,6 +32,7 @@ import Spinner from "../components/Spinner";
 import { useAuth } from "../context/AuthContext";
 import {
   getPolicyArtifact,
+  listPlanningScenarios,
   listPolicyArtifacts,
   MODEL_DISPLAY_NAME,
   queryRag,
@@ -41,6 +42,7 @@ import {
   type PolicyArtifact,
   type PolicyArtifactSummary,
   type PolicyStatus,
+  type PlanningScenario,
   type QueryResult,
 } from "../lib/ragApi";
 
@@ -88,14 +90,22 @@ function errorMessage(error: unknown): string {
   return "Could not reach the backend.";
 }
 
-function buildMonitorPrompt(policy: PolicyArtifact): string {
+function buildMonitorPrompt(policy: PolicyArtifact, scenarios: PlanningScenario[] = []): string {
+  const plannedWork = scenarios.flatMap((scenario) =>
+    scenario.features.features.slice(0, 20).map((feature) => {
+      const progress = feature.properties.implementation_progress;
+      return `- ${String(feature.properties.name ?? feature.properties.layer ?? "Planned item")}: status ${String(feature.properties.implementation_status ?? "not reported")}; team-reported progress ${typeof progress === "number" ? `${progress}%` : "not reported"}.`;
+    }),
+  ).join("\n");
   const instructions = [
     `Prepare an evidence-grounded implementation monitoring briefing for the policy "${policy.title}" (${policy.category}).`,
     `The policy's current workflow status is ${statusLabel(policy.status)}. Treat this as workflow metadata, not proof of implementation progress.`,
     "Use only retrieved workspace evidence to report implementation progress, relevant indicators, risks or bottlenecks, and recommended monitoring or corrective actions. Clearly say when evidence does not establish progress.",
+    "Planning Studio items are user-created proposals, not proof of implementation. Their progress values are manually reported by the implementation team; distinguish those reports from independently retrieved evidence and do not infer missing progress.",
+    scenarios.length ? `Linked Planning Studio scenarios:\n${plannedWork || "No plan features were recorded."}` : "No Planning Studio scenario is linked to this policy yet.",
     "Policy text:",
   ].join("\n\n");
-  const maxLen = 4000;
+  const maxLen = 6500;
   const textLen = Math.max(0, maxLen - instructions.length - 2);
   return `${instructions}\n\n${policy.content.slice(0, textLen)}`;
 }
@@ -182,6 +192,9 @@ function PolicyDetail({
   onChangeStatus,
   onRunAnalysis,
   onDismissError,
+  planningScenarios,
+  planningLoading,
+  planningError,
 }: {
   current: PolicyArtifact;
   aiLoading: boolean;
@@ -191,6 +204,9 @@ function PolicyDetail({
   onChangeStatus: (status: PolicyStatus) => void;
   onRunAnalysis: () => void;
   onDismissError: () => void;
+  planningScenarios: PlanningScenario[];
+  planningLoading: boolean;
+  planningError: string | null;
 }) {
   const [tab, setTab] = useState<DetailTab>("overview");
   const [showFullPolicy, setShowFullPolicy] = useState(false);
@@ -211,7 +227,27 @@ function PolicyDetail({
     [current],
   );
 
-  const hasCharts = projectedMetrics.length > 0 || dimensions.length > 0;
+  const implementationProgress = planningScenarios.flatMap((scenario) =>
+    scenario.features.features.map((feature, index) => {
+      const value = feature.properties.implementation_progress;
+      const rawWeight = feature.properties.implementation_weight;
+      const weight = typeof rawWeight === "number" && Number.isFinite(rawWeight) && rawWeight > 0 ? rawWeight : 1;
+      return typeof value === "number" && Number.isFinite(value)
+        ? {
+            label: String(feature.properties.name ?? `${scenario.name} item ${index + 1}`),
+            progress: Math.max(0, Math.min(100, value)),
+            weight,
+            status: String(feature.properties.implementation_status ?? "not reported"),
+          }
+        : null;
+    }),
+  ).filter((item): item is { label: string; progress: number; weight: number; status: string } => item !== null);
+  const linkedFeatureCount = planningScenarios.reduce((total, scenario) => total + scenario.features.features.length, 0);
+  const reportedWeight = implementationProgress.reduce((total, item) => total + item.weight, 0);
+  const overallImplementationProgress = reportedWeight > 0
+    ? implementationProgress.reduce((total, item) => total + item.progress * item.weight, 0) / reportedWeight
+    : null;
+  const hasCharts = projectedMetrics.length > 0 || dimensions.length > 0 || implementationProgress.length > 0;
   const TRUNCATE_AT = 600;
   const policyText = current.content;
   const isLong = policyText.length > TRUNCATE_AT;
@@ -301,6 +337,40 @@ function PolicyDetail({
       {/* ── Tab: Charts ── */}
       {tab === "charts" && (
         <>
+          {(planningLoading || planningError || current) && (
+            <Card className="mb-4">
+              <h3 className="mb-1 font-sans text-sm font-semibold text-secondary-800">Implementation progress from linked plans</h3>
+              <p className="mb-3 font-sans text-xs text-secondary-500">Progress is entered by the implementation team in Planning Studio; planned or AI-suggested work is not counted as completed.</p>
+              {!planningLoading && !planningError && planningScenarios.length > 0 && (
+                <div className="mb-4 rounded-lg border border-primary-200 bg-primary-50/70 p-3">
+                  <div className="flex items-baseline justify-between gap-3">
+                    <p className="font-sans text-xs font-semibold text-secondary-700">Overall reported implementation</p>
+                    <strong className="font-sans text-2xl font-bold tabular-nums text-primary-700">
+                      {overallImplementationProgress === null ? "Not reported" : `${overallImplementationProgress.toFixed(0)}%`}
+                    </strong>
+                  </div>
+                  <div className="mt-2 h-2 overflow-hidden rounded-full bg-secondary-200" role="progressbar" aria-label="Overall reported policy implementation progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={overallImplementationProgress === null ? undefined : Math.round(overallImplementationProgress)}>
+                    {overallImplementationProgress !== null && <div className="h-full rounded-full bg-primary-600 transition-all" style={{ width: `${Math.max(0, Math.min(100, overallImplementationProgress))}%` }} />}
+                  </div>
+                  <p className="mt-2 font-sans text-[11px] leading-relaxed text-secondary-600">
+                    {implementationProgress.length} of {linkedFeatureCount} linked features have reported progress; {linkedFeatureCount - implementationProgress.length} unreported feature{linkedFeatureCount - implementationProgress.length === 1 ? " is" : "s are"} excluded. Weighted average using each item’s weight (default 1).
+                  </p>
+                </div>
+              )}
+              {planningLoading ? <p className="font-sans text-xs text-secondary-500">Loading linked plans…</p> : planningError ? <p role="alert" className="font-sans text-xs text-red-600">{planningError}</p> : planningScenarios.length === 0 ? <p className="font-sans text-xs text-secondary-500">No Planning Studio scenarios are linked to this policy yet. <Link className="font-semibold text-primary-600 hover:underline" to={`/digital-twin?policy=${encodeURIComponent(current.id)}`}>Open this policy in Digital Twin</Link>, choose an existing scenario or create one, then save it to link it here.</p> : implementationProgress.length === 0 ? <p className="font-sans text-xs text-secondary-500">{planningScenarios.length} linked scenario{planningScenarios.length === 1 ? "" : "s"} found. No implementation progress has been recorded for its features yet.</p> : (
+                <ResponsiveContainer width="100%" height={Math.max(220, implementationProgress.length * 42)}>
+                  <BarChart data={implementationProgress} layout="vertical" margin={{ left: 8, right: 24 }}>
+                    <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                    <XAxis type="number" domain={[0, 100]} unit="%" tick={{ fontSize: 11 }} />
+                    <YAxis type="category" dataKey="label" width={160} tick={{ fontSize: 10 }} />
+                    <Tooltip formatter={(value, _name, item) => [`${value}% · ${item.payload.status} · weight ${item.payload.weight}`, "Reported progress"]} />
+                    <Bar dataKey="progress" name="Reported progress" fill="#0D9488" radius={[0, 4, 4, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              )}
+              {planningScenarios.length > 0 && <p className="mt-2 font-sans text-[11px] text-secondary-400">Linked scenarios: {planningScenarios.map((scenario) => scenario.name).join(" · ")}</p>}
+            </Card>
+          )}
           {!hasCharts ? (
             <Card className="flex flex-col items-center py-12 text-center">
               <p className="font-sans text-sm text-secondary-500">
@@ -461,14 +531,21 @@ export default function PolicyMonitoring() {
   const [aiError, setAiError]             = useState<string | null>(null);
   const [analysis, setAnalysis]           = useState<QueryResult | null>(null);
   const [aiLoading, setAiLoading]         = useState(false);
+  const [planningScenarioResult, setPlanningScenarioResult] = useState<{ policyId: string; items: PlanningScenario[] } | null>(null);
+  const [planningLoading, setPlanningLoading] = useState(false);
+  const [planningError, setPlanningError] = useState<string | null>(null);
   const selectedIdRef = useRef<string | null>(null);
+  const currentPolicyId = current?.id;
+  const planningScenarios = planningScenarioResult && planningScenarioResult.policyId === currentPolicyId
+    ? planningScenarioResult.items
+    : [];
 
-  const runAnalysis = useCallback(async (policy: PolicyArtifact) => {
+  const runAnalysis = useCallback(async (policy: PolicyArtifact, scenarios: PlanningScenario[] = []) => {
     setAiLoading(true);
     setAiError(null);
     setAnalysis(null);
     try {
-      setAnalysis(await queryRag(buildMonitorPrompt(policy), 6));
+      setAnalysis(await queryRag(buildMonitorPrompt(policy, scenarios), 6));
     } catch (error) {
       setAiError(errorMessage(error));
     } finally {
@@ -483,15 +560,30 @@ export default function PolicyMonitoring() {
       setDetailLoading(true);
       setAiError(null);
       setAnalysis(null);
+      setPlanningLoading(true);
+      setPlanningError(null);
       try {
         const policy = await getPolicyArtifact(id);
         if (selectedIdRef.current !== id) return;
         setCurrent(policy);
-        void runAnalysis(policy);
+        try {
+          const scenarios = await listPlanningScenarios(id);
+          if (selectedIdRef.current !== id) return;
+          setPlanningScenarioResult({ policyId: id, items: scenarios });
+          void runAnalysis(policy, scenarios);
+        } catch (error) {
+          if (selectedIdRef.current !== id) return;
+          setPlanningScenarioResult({ policyId: id, items: [] });
+          setPlanningError(errorMessage(error));
+          void runAnalysis(policy, []);
+        }
       } catch (error) {
         if (selectedIdRef.current === id) setLoadError(errorMessage(error));
       } finally {
-        if (selectedIdRef.current === id) setDetailLoading(false);
+        if (selectedIdRef.current === id) {
+          setDetailLoading(false);
+          setPlanningLoading(false);
+        }
       }
     },
     [runAnalysis],
@@ -742,6 +834,9 @@ export default function PolicyMonitoring() {
                     onChangeStatus={(s) => void changeStatus(s)}
                     onRunAnalysis={() => void runAnalysis(current)}
                     onDismissError={() => setAiError(null)}
+                    planningScenarios={planningScenarios}
+                    planningLoading={planningLoading}
+                    planningError={planningError}
                   />
                 )}
               </div>
