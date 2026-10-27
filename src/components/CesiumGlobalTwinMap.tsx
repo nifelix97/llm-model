@@ -12,6 +12,7 @@ export type TwinMapPoint = {
   lon: number;
   height?: number;
   proposalId?: string;
+  proposalType?: string;
 };
 
 export type TwinMapRoad = {
@@ -381,26 +382,42 @@ export default function CesiumGlobalTwinMap(props: Props) {
         id: `twin-point-${point.id}`,
         name: point.name,
         description: point.detail,
-        position: Cesium.Cartesian3.fromDegrees(point.lon, point.lat, point.height ?? 0),
-        point: {
-          pixelSize: point.id === "KGL-001" ? 12 : 8,
-          color,
-          outlineColor: Cesium.Color.WHITE,
-          outlineWidth: 1,
-          heightReference: point.height === undefined ? Cesium.HeightReference.CLAMP_TO_GROUND : Cesium.HeightReference.NONE,
-          disableDepthTestDistance: 100_000,
-        },
+        position: Cesium.Cartesian3.fromDegrees(point.lon, point.lat, point.proposalId ? 10 : point.height ?? 0),
+        ...(point.proposalId && point.proposalType !== "road_upgrade"
+          ? {
+              cylinder: {
+                length: 18,
+                topRadius: 3.5,
+                bottomRadius: 5,
+                material: color.withAlpha(0.9),
+                outline: true,
+                outlineColor: Cesium.Color.WHITE,
+                heightReference: Cesium.HeightReference.RELATIVE_TO_GROUND,
+              },
+            }
+          : {
+              point: {
+                pixelSize: point.id === "KGL-001" ? 12 : 8,
+                color,
+                outlineColor: Cesium.Color.WHITE,
+                outlineWidth: 1,
+                heightReference: point.height === undefined ? Cesium.HeightReference.CLAMP_TO_GROUND : Cesium.HeightReference.NONE,
+                disableDepthTestDistance: 100_000,
+              },
+            }),
         label: {
-          text: point.name,
+          text: point.proposalId && point.proposalType !== "road_upgrade"
+            ? `${point.name} · illustrative district symbol`
+            : point.name,
           font: "11px sans-serif",
           fillColor: Cesium.Color.WHITE,
           showBackground: true,
           backgroundColor: Cesium.Color.fromCssColorString("#061019").withAlpha(0.8),
           pixelOffset: new Cesium.Cartesian2(0, -14),
           distanceDisplayCondition: new Cesium.DistanceDisplayCondition(0, 180_000),
-          heightReference: point.height === undefined ? Cesium.HeightReference.CLAMP_TO_GROUND : Cesium.HeightReference.NONE,
+          heightReference: point.proposalId ? Cesium.HeightReference.RELATIVE_TO_GROUND : point.height === undefined ? Cesium.HeightReference.CLAMP_TO_GROUND : Cesium.HeightReference.NONE,
         },
-        properties: { twinPoint: point },
+        properties: { twinPoint: point, proposalId: point.proposalId ?? null },
       });
     }
     if (props.layers.roads && (props.groundView || props.rwandaFocus)) {
@@ -583,25 +600,104 @@ export default function CesiumGlobalTwinMap(props: Props) {
       if (visibility[layer] === false) continue;
       const selected = feature.id === props.selectedPlanningFeatureId;
       const color = typeof p.color === "string" ? Cesium.Color.fromCssColorString(p.color) : Cesium.Color.fromCssColorString("#28d7c5");
+      const aiConceptLabel = String(p.geometry_source ?? "").startsWith("AI-generated illustrative") ? " · AI concept" : "";
+      if (p.ai_proposal_id && feature.geometry.type === "Point") continue;
       if (feature.geometry.type === "Point") {
+        if (String(p.geometry_status ?? "").startsWith("pending_")) continue;
         const [lon, lat] = feature.geometry.coordinates as number[];
-        source.entities.add({ id: `planning-${feature.id}`, name: String(p.name ?? p.intendedUse ?? "Proposed facility"), position: Cesium.Cartesian3.fromDegrees(lon, lat), point: { pixelSize: selected ? 15 : 11, color: color.withAlpha(props.planningComparison ? 0.55 : 1), outlineColor: Cesium.Color.WHITE, outlineWidth: 2, heightReference: Cesium.HeightReference.CLAMP_TO_GROUND, disableDepthTestDistance: 5000 }, properties: { planningFeatureId: feature.id } });
+        source.entities.add({ id: `planning-${feature.id}`, name: `${String(p.name ?? p.intendedUse ?? "Proposed facility")}${aiConceptLabel}`, position: Cesium.Cartesian3.fromDegrees(lon, lat), point: { pixelSize: selected ? 15 : 11, color: color.withAlpha(props.planningComparison ? 0.55 : 1), outlineColor: Cesium.Color.WHITE, outlineWidth: 2, heightReference: Cesium.HeightReference.CLAMP_TO_GROUND, disableDepthTestDistance: 5000 }, properties: { planningFeatureId: feature.id, geometrySource: p.geometry_source ?? "not recorded", validationStatus: p.geometry_validation_status ?? "not recorded", evidence: p.proposal_evidence ?? "not recorded", policyId: p.policy_id ?? "not linked" } });
         continue;
       }
-      if (feature.geometry.type === "LineString") {
-        const coords = feature.geometry.coordinates as number[][];
-        source.entities.add({ id: `planning-${feature.id}`, name: String(p.name ?? "Proposed road"), polyline: { positions: Cesium.Cartesian3.fromDegreesArray(coords.flatMap((c) => [c[0], c[1]])), width: selected ? 5 : 3, material: color.withAlpha(props.planningComparison ? 0.4 : 0.9), clampToGround: true }, properties: { planningFeatureId: feature.id } });
-        if (selected) addVertexHandles(source, feature.id, coords);
+      if (feature.geometry.type === "LineString" || feature.geometry.type === "MultiLineString") {
+        const paths = feature.geometry.type === "LineString"
+          ? [feature.geometry.coordinates as number[][]]
+          : feature.geometry.coordinates as number[][][];
+        const isRoad = layer === "proposed-road";
+        const isBridge = String(p.category ?? "").toLowerCase().includes("bridge");
+        const roadWidth = Math.max(2, Math.min(100, Number(p.road_width_m ?? (isBridge ? 10 : 8))));
+        for (const [partIndex, coords] of paths.entries()) {
+          if (!Array.isArray(coords) || coords.length < 2) continue;
+          const positions = Cesium.Cartesian3.fromDegreesArray(coords.flatMap((coordinate) => [coordinate[0], coordinate[1]]));
+          const suffix = paths.length > 1 ? `-part-${partIndex}` : "";
+          if (isRoad) {
+            const alpha = props.planningComparison ? 0.48 : 0.95;
+            source.entities.add({
+              id: `planning-${feature.id}${suffix}`,
+              name: `${String(p.name ?? (isBridge ? "Proposed bridge alignment" : "Proposed road corridor"))}${aiConceptLabel}`,
+              corridor: {
+                positions,
+                width: roadWidth,
+                height: 0.35,
+                heightReference: Cesium.HeightReference.RELATIVE_TO_GROUND,
+                extrudedHeight: 0,
+                extrudedHeightReference: Cesium.HeightReference.RELATIVE_TO_GROUND,
+                cornerType: Cesium.CornerType.ROUNDED,
+                material: color.withAlpha(alpha),
+                outline: true,
+                outlineColor: selected ? Cesium.Color.WHITE : color.withAlpha(alpha),
+              },
+              properties: { planningFeatureId: feature.id, geometrySource: p.geometry_source ?? "not recorded", validationStatus: p.geometry_validation_status ?? "not recorded" },
+            });
+            source.entities.add({
+              id: `planning-center-${feature.id}${suffix}`,
+              name: `${String(p.name ?? "Proposed route")} center marking · illustrative`,
+              polyline: {
+                positions,
+                width: selected ? 1.8 : 1.2,
+                material: new Cesium.PolylineDashMaterialProperty({ color: Cesium.Color.WHITE.withAlpha(alpha), dashLength: 14 }),
+                clampToGround: true,
+              },
+              properties: { planningFeatureId: feature.id },
+            });
+          } else {
+            source.entities.add({
+              id: `planning-${feature.id}${suffix}`,
+              name: String(p.name ?? (isBridge ? "Bridge alignment · vertical profile pending" : "Proposed line")),
+              polyline: {
+                positions,
+                width: selected ? 5 : isBridge ? 4 : 3,
+                material: isBridge
+                  ? new Cesium.PolylineDashMaterialProperty({ color: color.withAlpha(props.planningComparison ? 0.4 : 0.9), dashLength: 12 })
+                  : color.withAlpha(props.planningComparison ? 0.4 : 0.9),
+                clampToGround: true,
+              },
+              properties: { planningFeatureId: feature.id },
+            });
+          }
+          if (selected && paths.length === 1) addVertexHandles(source, feature.id, coords);
+        }
         continue;
       }
-      const rings = feature.geometry.coordinates as number[][][];
-      const outer = rings[0];
-      if (!outer || outer.length < 4) continue;
       const isBuilding = layer === "proposed-building";
       const floors = Number(p.floors ?? 1);
       const height = Math.max(2.5, Number(p.height ?? floors * 3.2));
-      source.entities.add({ id: `planning-${feature.id}`, name: String(p.name ?? (isBuilding ? "Proposed building" : "Proposed planning zone")), polygon: { hierarchy: Cesium.Cartesian3.fromDegreesArray(outer.flatMap((c) => [c[0], c[1]])), material: color.withAlpha(props.planningComparison ? 0.12 : isBuilding ? 0.62 : 0.2), outline: true, outlineColor: selected ? Cesium.Color.WHITE : color, outlineWidth: selected ? 3 : props.planningComparison ? 1.5 : 2, height: 0, heightReference: Cesium.HeightReference.CLAMP_TO_GROUND, ...(isBuilding ? { extrudedHeight: height, extrudedHeightReference: Cesium.HeightReference.RELATIVE_TO_GROUND } : {}) }, properties: { planningFeatureId: feature.id } });
-      if (selected) addVertexHandles(source, feature.id, outer.slice(0, -1));
+      const polygons = feature.geometry.type === "Polygon"
+        ? [feature.geometry.coordinates as number[][][]]
+        : feature.geometry.type === "MultiPolygon"
+          ? feature.geometry.coordinates as number[][][][]
+          : [];
+      for (const [partIndex, rings] of polygons.entries()) {
+        const outer = rings[0];
+        if (!outer || outer.length < 4) continue;
+        const holes = rings.slice(1).map((ring) => new Cesium.PolygonHierarchy(Cesium.Cartesian3.fromDegreesArray(ring.flatMap((coordinate) => [coordinate[0], coordinate[1]]))));
+        const suffix = polygons.length > 1 ? `-part-${partIndex}` : "";
+        source.entities.add({
+          id: `planning-${feature.id}${suffix}`,
+          name: `${String(p.name ?? (isBuilding ? "Proposed building" : "Proposed planning zone"))}${aiConceptLabel}`,
+          polygon: {
+            hierarchy: new Cesium.PolygonHierarchy(Cesium.Cartesian3.fromDegreesArray(outer.flatMap((coordinate) => [coordinate[0], coordinate[1]])), holes),
+            material: color.withAlpha(props.planningComparison ? 0.12 : isBuilding ? 0.62 : 0.2),
+            outline: true,
+            outlineColor: selected ? Cesium.Color.WHITE : color,
+            outlineWidth: selected ? 3 : props.planningComparison ? 1.5 : 2,
+            height: 0,
+            heightReference: Cesium.HeightReference.CLAMP_TO_GROUND,
+            ...(isBuilding ? { extrudedHeight: height, extrudedHeightReference: Cesium.HeightReference.RELATIVE_TO_GROUND } : {}),
+          },
+          properties: { planningFeatureId: feature.id, geometrySource: p.geometry_source ?? "not recorded", validationStatus: p.geometry_validation_status ?? "not recorded" },
+        });
+        if (selected && polygons.length === 1) addVertexHandles(source, feature.id, outer.slice(0, -1));
+      }
     }
     void viewer.dataSources.add(source);
     planningRef.current = source;
@@ -648,7 +744,7 @@ export default function CesiumGlobalTwinMap(props: Props) {
       const coordinates = lineTool ? draft : [...draft, draft[0]];
       const category = planningTool === "bridge" ? "bridge alignment" : planningTool === "green_space" ? "green space" : planningTool;
       const name = planningTool === "road" ? "Proposed road" : planningTool === "bridge" ? "Proposed bridge alignment" : planningTool === "building" ? "Proposed building" : planningTool === "green_space" ? "Proposed green space" : "Proposed zone";
-      const feature: PlanningFeature = { type: "Feature", id: crypto.randomUUID(), geometry: { type: lineTool ? "LineString" : "Polygon", coordinates: lineTool ? coordinates : [coordinates] }, properties: { layer, name, category, intendedUse: category, color: planningTool === "building" ? "#f59e0b" : lineTool ? "#fbbf24" : planningTool === "green_space" ? "#4ade80" : "#22d3ee", floors: 2, height: 6.4, status: "Proposed", implementation_status: "not_started", implementation_progress: null } };
+      const feature: PlanningFeature = { type: "Feature", id: crypto.randomUUID(), geometry: { type: lineTool ? "LineString" : "Polygon", coordinates: lineTool ? coordinates : [coordinates] }, properties: { layer, name, category, intendedUse: category, color: planningTool === "building" ? "#f59e0b" : lineTool ? "#fbbf24" : planningTool === "green_space" ? "#4ade80" : "#22d3ee", floors: 2, height: 6.4, ...(planningTool === "building" ? { height_is_estimate: true, height_basis: "editable illustrative planning assumption; not source-mapped" } : {}), ...(planningTool === "road" ? { road_width_m: 8, road_width_basis: "editable illustrative planning width; not an engineering specification" } : {}), ...(planningTool === "bridge" ? { bridge_vertical_profile: "not supplied; line is an alignment only" } : {}), geometry_source: "user-drawn", geometry_validation_status: "drawn in Planning Studio; not independently verified against a survey or project plan", status: "Proposed", implementation_status: "not_started", implementation_progress: null } };
       onAddPlanningFeature?.(feature);
       clearDraft();
       draft = [];
@@ -664,7 +760,11 @@ export default function CesiumGlobalTwinMap(props: Props) {
         return;
       }
       if (pickedId.startsWith("planning-")) {
-        const featureId = pickedId.slice("planning-".length);
+        const pickedEntity = pickedValue instanceof Cesium.Entity ? pickedValue : undefined;
+        const entityProperties = pickedEntity?.properties?.getValue(viewer.clock.currentTime) as Record<string, unknown> | undefined;
+        const featureId = typeof entityProperties?.planningFeatureId === "string"
+          ? entityProperties.planningFeatureId
+          : pickedId.slice("planning-".length);
         if (!pickedId.startsWith("planning-vertex-")) current.onSelectPlanningFeature?.(featureId);
         if (current.planningTool !== "none") return;
       }
@@ -841,7 +941,13 @@ function moveVertex(feature: PlanningFeature, index: number, coordinate: [number
 
 function translateFeature(feature: PlanningFeature, target: [number, number]): PlanningFeature {
   const coordinates = structuredClone(feature.geometry.coordinates);
-  const first = feature.geometry.type === "Point" ? coordinates as number[] : feature.geometry.type === "LineString" ? (coordinates as number[][])[0] : (coordinates as number[][][])[0]?.[0];
+  const first = feature.geometry.type === "Point"
+    ? coordinates as number[]
+    : feature.geometry.type === "LineString"
+      ? (coordinates as number[][])[0]
+      : feature.geometry.type === "MultiLineString" || feature.geometry.type === "Polygon"
+        ? (coordinates as number[][][])[0]?.[0]
+        : (coordinates as number[][][][])[0]?.[0]?.[0];
   if (!first) return feature;
   const dx = target[0] - first[0];
   const dy = target[1] - first[1];

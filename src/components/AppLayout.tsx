@@ -113,7 +113,7 @@ const NAV = [
   },
   {
     to: "/monitoring",
-    label: "PMI",
+    label: "PIM",
     icon: (
       <svg
         className="size-5"

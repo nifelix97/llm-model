@@ -91,23 +91,27 @@ function errorMessage(error: unknown): string {
 }
 
 function buildMonitorPrompt(policy: PolicyArtifact, scenarios: PlanningScenario[] = []): string {
-  const plannedWork = scenarios.flatMap((scenario) =>
-    scenario.features.features.slice(0, 20).map((feature) => {
-      const progress = feature.properties.implementation_progress;
-      return `- ${String(feature.properties.name ?? feature.properties.layer ?? "Planned item")}: status ${String(feature.properties.implementation_status ?? "not reported")}; team-reported progress ${typeof progress === "number" ? `${progress}%` : "not reported"}.`;
-    }),
-  ).join("\n");
+  const plannedWork = scenarios.flatMap((scenario) => scenario.features.features).slice(0, 8).map((feature) => {
+    const name = String(feature.properties.name ?? feature.properties.layer ?? "Planned item").slice(0, 100);
+    const status = String(feature.properties.implementation_status ?? "not reported").slice(0, 40);
+    const progress = feature.properties.implementation_progress;
+    return `- ${name}: status ${status}; team-reported progress ${typeof progress === "number" ? `${progress}%` : "not reported"}.`;
+  }).join("\n");
   const instructions = [
-    `Prepare an evidence-grounded implementation monitoring briefing for the policy "${policy.title}" (${policy.category}).`,
+    `Prepare an evidence-grounded implementation monitoring briefing for the policy "${policy.title.slice(0, 200)}" (${policy.category.slice(0, 100)}).`,
     `The policy's current workflow status is ${statusLabel(policy.status)}. Treat this as workflow metadata, not proof of implementation progress.`,
     "Use only retrieved workspace evidence to report implementation progress, relevant indicators, risks or bottlenecks, and recommended monitoring or corrective actions. Clearly say when evidence does not establish progress.",
     "Planning Studio items are user-created proposals, not proof of implementation. Their progress values are manually reported by the implementation team; distinguish those reports from independently retrieved evidence and do not infer missing progress.",
     scenarios.length ? `Linked Planning Studio scenarios:\n${plannedWork || "No plan features were recorded."}` : "No Planning Studio scenario is linked to this policy yet.",
     "Policy text:",
   ].join("\n\n");
-  const maxLen = 6500;
-  const textLen = Math.max(0, maxLen - instructions.length - 2);
-  return `${instructions}\n\n${policy.content.slice(0, textLen)}`;
+  // The RAG API validates query at 4,000 characters. Keep a safety margin and
+  // budget the policy body from the actual instruction length (which varies
+  // with linked planning features) rather than using a fixed oversized cap.
+  const maxLen = 3900;
+  const promptPrefix = `${instructions}\n\n`;
+  const textLen = Math.max(0, maxLen - promptPrefix.length);
+  return `${promptPrefix}${policy.content.slice(0, textLen)}`.slice(0, maxLen);
 }
 
 function formatDate(value: string): string {
@@ -319,9 +323,7 @@ function PolicyDetail({
           <h3 className="mb-3 font-sans text-xs font-semibold uppercase tracking-wider text-secondary-500">
             Policy content
           </h3>
-          <p className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-secondary-700">
-            {displayedText}
-          </p>
+          <MarkdownContent content={displayedText} />
           {isLong && (
             <button
               type="button"

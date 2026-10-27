@@ -21,7 +21,7 @@ export default function Input({
       {label && (
         <label
           htmlFor={inputId}
-          className="text-sm font-semibold text-secondary-100 font-sans"
+          className="text-sm font-semibold text-secondary-800 font-sans"
         >
           {label}
         </label>
@@ -29,8 +29,8 @@ export default function Input({
       <input
         id={inputId}
         className={[
-          "w-full rounded-lg border px-4 py-2.5 text-secondary-100 text-sm font-sans",
-          "bg-primary-50 placeholder:text-secondary-100",
+          "w-full rounded-lg border px-4 py-2.5 text-secondary-900 text-sm font-sans",
+          "bg-white placeholder:text-secondary-400",
           "transition-colors duration-150 outline-none",
           "focus:ring-2 focus:ring-primary-400 focus:border-primary-400",
           error

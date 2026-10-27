@@ -914,8 +914,8 @@ export type PlanningFeature = {
   type: "Feature";
   id: string;
   geometry: {
-    type: "Point" | "LineString" | "Polygon";
-    coordinates: number[] | number[][] | number[][][];
+    type: "Point" | "LineString" | "MultiLineString" | "Polygon" | "MultiPolygon";
+    coordinates: number[] | number[][] | number[][][] | number[][][][];
   };
   properties: Record<string, string | number | boolean | null>;
 };
@@ -959,6 +959,17 @@ export async function listPlanningScenarios(policyId?: string, includeUnlinked =
 export async function savePlanningScenario(payload: PlanningScenarioPayload, id?: string): Promise<PlanningScenario> {
   const res = await apiFetch(id ? `/api/v1/planning/scenarios/${encodeURIComponent(id)}` : "/api/v1/planning/scenarios", {
     method: id ? "PUT" : "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  return parseJson<PlanningScenario>(res);
+}
+
+export async function syncPolicyPlanningProposals(
+  payload: PlanningScenarioPayload & { policy_id: string },
+): Promise<PlanningScenario> {
+  const res = await apiFetch("/api/v1/planning/scenarios/policy-proposals/sync", {
+    method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });

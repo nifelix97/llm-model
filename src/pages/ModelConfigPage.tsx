@@ -56,6 +56,7 @@ interface DocEntry {
   file: File;
   uploadStatus: WaterProgressStatus;
   uploadProgress: number;
+  uploadError?: string;
 }
 
 interface WebEntry {
@@ -148,6 +149,7 @@ function DeleteButton({ onClick }: { onClick: () => void }) {
 function docStatusLabel(status: WaterProgressStatus, progress: number): string {
   if (status === "complete") return "Indexed";
   if (status === "error") return "Failed";
+  if (status === "processing") return "Processing…";
   if (status === "uploading") return `${progress}%`;
   return "Ready";
 }
@@ -361,10 +363,14 @@ function DocumentsTab({
   entries,
   onAdd,
   onDelete,
+  onRetry,
+  retrying,
 }: {
   entries: DocEntry[];
   onAdd: (e: DocEntry) => void;
   onDelete: (id: string) => void;
+  onRetry: (id: string) => void;
+  retrying: boolean;
 }) {
   const [dragging, setDragging] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -462,6 +468,7 @@ function DocumentsTab({
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold text-secondary-900 font-sans truncate">{e.name}</p>
                 <p className="text-xs text-secondary-400 font-sans">{formatBytes(e.size)}</p>
+                {e.uploadError && <p className="mt-1 text-xs text-error-600 break-words">{e.uploadError}</p>}
               </div>
               <div className="hidden sm:flex items-center gap-2">
                 <WaterProgress
@@ -476,7 +483,7 @@ function DocumentsTab({
                       ? "text-success-600"
                       : e.uploadStatus === "error"
                         ? "text-error-600"
-                        : e.uploadStatus === "uploading"
+                      : e.uploadStatus === "uploading" || e.uploadStatus === "processing"
                           ? "text-primary-600"
                           : "text-secondary-400",
                   ].join(" ")}
@@ -484,6 +491,11 @@ function DocumentsTab({
                   {docStatusLabel(e.uploadStatus, e.uploadProgress)}
                 </span>
               </div>
+              {e.uploadStatus === "error" && (
+                <button type="button" disabled={retrying} onClick={() => onRetry(e.id)} className="shrink-0 rounded-lg border border-primary-300 px-2.5 py-1.5 text-xs font-semibold text-primary-700 hover:bg-primary-50 disabled:opacity-50">
+                  {retrying ? "Retrying…" : "Retry"}
+                </button>
+              )}
               <Badge variant="secondary">{e.name.split(".").pop()?.toUpperCase()}</Badge>
               <DeleteButton onClick={() => onDelete(e.id)} />
             </div>
@@ -700,6 +712,54 @@ export default function ModelConfigPage() {
 
   // ── Submit ──────────────────────────────────────────────────────────────────
 
+  async function uploadOneDocument(doc: DocEntry) {
+    setDocEntries((current) => current.map((entry) => entry.id === doc.id
+      ? { ...entry, uploadStatus: "uploading", uploadProgress: 0, uploadError: undefined }
+      : entry));
+    try {
+      const result = await uploadDocument(doc.file, doc.name, (progress) => {
+        // The transfer ends before extraction/embedding/persistence finish.
+        setDocEntries((current) => current.map((entry) => entry.id === doc.id
+          ? {
+              ...entry,
+              uploadStatus: progress >= 100 ? "processing" : "uploading",
+              uploadProgress: Math.min(92, Math.round(progress * 0.92)),
+            }
+          : entry));
+      });
+      setDocEntries((current) => current.map((entry) => entry.id === doc.id
+        ? { ...entry, uploadStatus: "complete", uploadProgress: 100, uploadError: undefined }
+        : entry));
+      return result;
+    } catch (err) {
+      const detail = err instanceof RagApiError ? err.message : err instanceof Error ? err.message : "upload failed";
+      setDocEntries((current) => current.map((entry) => entry.id === doc.id
+        ? { ...entry, uploadStatus: "error", uploadError: detail }
+        : entry));
+      throw new Error(`File "${doc.name}": ${detail}`, { cause: err });
+    }
+  }
+
+  async function handleRetryDocument(id: string) {
+    if (submitStatus === "submitting") return;
+    const doc = docEntries.find((entry) => entry.id === id);
+    if (!doc) return;
+    setSubmitStatus("submitting");
+    setSubmitError(null);
+    setSubmitSummary(null);
+    try {
+      const result = await uploadOneDocument(doc);
+      const otherFailures = docEntries.some((entry) => entry.id !== id && entry.uploadStatus === "error");
+      const otherPendingItems = qaEntries.length + knowledgeEntries.length + webEntries.length > 0;
+      setSubmitStatus(otherFailures ? "error" : otherPendingItems ? "idle" : "success");
+      setSubmitError(otherFailures ? "Some documents still failed. Retry them individually." : null);
+      setSubmitSummary({ documents: 1, batchItems: 0, totalChunks: result.chunk_count ?? 0 });
+    } catch (err) {
+      setSubmitStatus("error");
+      setSubmitError(err instanceof Error ? err.message : "Document retry failed.");
+    }
+  }
+
   async function handleSubmit() {
     if (totalItems === 0) return;
     setSubmitStatus("submitting");
@@ -707,48 +767,24 @@ export default function ModelConfigPage() {
     setSubmitSummary(null);
 
     try {
-      const uploadResults = await Promise.all(
-        docEntries.map(async (doc) => {
+      const pendingDocuments = docEntries.filter((doc) => doc.uploadStatus !== "complete");
+      const uploadResults: Awaited<ReturnType<typeof uploadDocument>>[] = [];
+      const uploadErrors: string[] = [];
+      let nextUploadIndex = 0;
+      const uploadWorker = async () => {
+        while (true) {
+          const doc = pendingDocuments[nextUploadIndex++];
+          if (!doc) return;
           try {
-            setDocEntries((current) =>
-              current.map((entry) =>
-                entry.id === doc.id
-                  ? { ...entry, uploadStatus: "uploading", uploadProgress: 0 }
-                  : entry,
-              ),
-            );
-            const result = await uploadDocument(doc.file, doc.name, (progress) => {
-              // Transfer can finish before extraction/embedding. Leave a small
-              // visual runway until the server confirms the complete operation.
-              setDocEntries((current) =>
-                current.map((entry) =>
-                  entry.id === doc.id
-                    ? { ...entry, uploadStatus: "uploading", uploadProgress: Math.min(92, Math.round(progress * 0.92)) }
-                    : entry,
-                ),
-              );
-            });
-            setDocEntries((current) =>
-              current.map((entry) =>
-                entry.id === doc.id
-                  ? { ...entry, uploadStatus: "complete", uploadProgress: 100 }
-                  : entry,
-              ),
-            );
-            return result;
+            uploadResults.push(await uploadOneDocument(doc));
           } catch (err) {
-            setDocEntries((current) =>
-              current.map((entry) =>
-                entry.id === doc.id
-                  ? { ...entry, uploadStatus: "error" }
-                  : entry,
-              ),
-            );
-            const detail = err instanceof RagApiError ? err.message : "upload failed";
-            throw new Error(`File "${doc.name}": ${detail}`, { cause: err });
+            // Record this file's failure and let workers continue with later files.
+            uploadErrors.push(err instanceof Error ? err.message : `File "${doc.name}" failed to upload.`);
           }
-        })
-      );
+        }
+      };
+      // Keep pressure on embedding quotas and database connections predictable.
+      await Promise.all(Array.from({ length: Math.min(2, pendingDocuments.length) }, () => uploadWorker()));
 
       const batchResult =
         qaEntries.length > 0 || knowledgeEntries.length > 0 || webEntries.length > 0
@@ -787,7 +823,10 @@ export default function ModelConfigPage() {
         batchItems: batchResult?.ingested ?? 0,
         totalChunks,
       });
-      setSubmitStatus("success");
+      setSubmitStatus(uploadErrors.length > 0 ? "error" : "success");
+      setSubmitError(uploadErrors.length > 0
+        ? `${uploadErrors.length} document${uploadErrors.length === 1 ? "" : "s"} failed. Use Retry on each failed row.\n${uploadErrors.join("\n")}`
+        : null);
       setQaEntries([]);
       setKnowledgeEntries([]);
       setWebEntries([]);
@@ -904,6 +943,8 @@ export default function ModelConfigPage() {
                 entries={docEntries}
                 onAdd={(e) => setDocEntries((prev) => [...prev, e])}
                 onDelete={(id) => setDocEntries((prev) => prev.filter((e) => e.id !== id))}
+                onRetry={(id) => void handleRetryDocument(id)}
+                retrying={submitStatus === "submitting"}
               />
             )}
             {activeTab === "web" && (

@@ -1,6 +1,6 @@
 import { Check, CircleAlert, Droplets } from "lucide-react";
 
-export type WaterProgressStatus = "queued" | "uploading" | "complete" | "error";
+export type WaterProgressStatus = "queued" | "uploading" | "processing" | "complete" | "error";
 
 interface WaterProgressProps {
   progress: number;
@@ -15,6 +15,8 @@ export default function WaterProgress({ progress, status, label }: WaterProgress
       ? `${label} upload complete`
       : status === "error"
         ? `${label} upload failed`
+        : status === "processing"
+          ? `${label} is processing after upload`
         : status === "uploading"
           ? `${label} upload ${value}% complete`
           : `${label} ready to upload`;
@@ -39,6 +41,8 @@ export default function WaterProgress({ progress, status, label }: WaterProgress
           <Check className="size-4" strokeWidth={2.8} />
         ) : status === "error" ? (
           <CircleAlert className="size-4" />
+        ) : status === "processing" ? (
+          <Droplets className="size-4 animate-pulse" />
         ) : status === "uploading" ? (
           <Droplets className="size-4" />
         ) : (
